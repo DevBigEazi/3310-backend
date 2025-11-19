@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+import scoreRoutes from './routes/scoreRoutes.js';
 import playerRoutes from './routes/playerRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
@@ -43,6 +44,7 @@ app.get('/health', (_req, res) => {
 });
 
 // API Routes
+app.use('/api/scores', scoreRoutes);
 app.use('/api/player', playerRoutes);
 app.use('/api/admin', adminRoutes);
 
