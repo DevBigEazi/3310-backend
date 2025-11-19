@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+import playerRoutes from './routes/playerRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
 // Load environment variables
@@ -42,6 +43,7 @@ app.get('/health', (_req, res) => {
 });
 
 // API Routes
+app.use('/api/player', playerRoutes);
 app.use('/api/admin', adminRoutes);
 
 // ==================== START SERVER ====================
