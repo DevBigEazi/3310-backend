@@ -4,6 +4,8 @@ import { ethers } from 'ethers';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+import adminRoutes from './routes/adminRoutes.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -38,6 +40,9 @@ mongoose.connect(MONGODB_URI)
 app.get('/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date() });
 });
+
+// API Routes
+app.use('/api/admin', adminRoutes);
 
 // ==================== START SERVER ====================
 const PORT = process.env.PORT || 3001;
