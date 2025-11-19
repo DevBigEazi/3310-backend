@@ -2,8 +2,53 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { Player } from '../models/Player.js';
+import { Score } from '../models/Score.js';
+import { getWeekNumber } from '../utils/helpers.js';
 
 const router = express.Router();
+
+// Get player stats
+router.get('/:address', async (req: Request, res: Response) => {
+  try {
+    const addressParam = req.params.address;
+    
+    if (!addressParam) {
+      return res.status(400).json({ error: 'Address parameter is required' });
+    }
+    
+    const address = addressParam.toLowerCase();
+    
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({ error: 'Invalid address' });
+    }
+
+    const player = await Player.findOne({ address });
+    if (!player) {
+      console.log(`Player not found for address: ${address}`);
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    const currentWeek = getWeekNumber();
+    const weeklyScore = await Score.findOne(
+      { playerAddress: address, weekNumber: currentWeek, isValid: true },
+      { score: 1 },
+      { sort: { score: -1 } }
+    );
+
+    res.json({
+      address: player.address,
+      username: player.username,
+      email: player.email,
+      createdAt: player.createdAt,
+      totalScoresSubmitted: player.totalScoresSubmitted,
+      lifetimeEarnings: player.lifetimeEarnings,
+      currentWeekScore: weeklyScore?.score || 0
+    });
+  } catch (error) {
+    console.error('Player stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Create a new player
 router.post('/', async (req: Request, res: Response) => {
