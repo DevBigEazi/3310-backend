@@ -3,14 +3,55 @@ import { ethers } from 'ethers';
 // Config constants
 export const MAX_SCORE = 100000; // Sanity check: max possible score
 export const MIN_SCORE = 0;
+export const MAX_GAMES_PER_HOUR = 5; // Maximum games allowed per hour
+export const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
-// Get current ISO week number
+// Get current week number (starting from Monday) to align with smart contract
 export function getWeekNumber(date = new Date()): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  // Convert to UTC to ensure consistency
+  const timestamp = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 1000;
+  // Calculate week number using the same formula as the smart contract
+  // ((timestamp / SECONDS_PER_WEEK) + 3) / 1
+  const SECONDS_PER_WEEK = 604800;
+  return Math.floor(((timestamp / SECONDS_PER_WEEK) + 3) / 1);
+}
+
+// Check if the current time is within the submission period (Saturday 00:00 UTC → Sunday 23:59 UTC)
+export function isInSubmissionPeriod(date = new Date()): boolean {
+  // Convert to the same day numbering as the smart contract (0=Monday, 6=Sunday)
+  const dayOfWeek = ((Math.floor(date.getTime() / 1000) / 86400) + 3) % 7;
+  
+  // Saturday is day 5, Sunday is day 6 in the smart contract's numbering
+  return dayOfWeek === 5 || dayOfWeek === 6;
+}
+
+// Calculate time remaining until next play session
+export function getTimeRemainingUntilNextSession(firstGameTime: Date): {
+  canPlay: boolean;
+  timeRemainingMs: number;
+} {
+  const now = new Date();
+  const hourResetTime = new Date(firstGameTime.getTime() + HOUR_IN_MS);
+  
+  if (now >= hourResetTime) {
+    return { canPlay: true, timeRemainingMs: 0 };
+  }
+  
+  return {
+    canPlay: false,
+    timeRemainingMs: hourResetTime.getTime() - now.getTime()
+  };
+}
+
+// Format milliseconds to human-readable time (MM:SS)
+export function formatTimeRemaining(ms: number): string {
+  if (ms <= 0) return '00:00';
+  
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
 // Validate score is reasonable
