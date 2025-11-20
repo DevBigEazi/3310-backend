@@ -3,7 +3,8 @@ import type { Request, Response } from 'express';
 import { ethers } from 'ethers';
 import { Player } from '../models/Player.js';
 import { Score } from '../models/Score.js';
-import { getWeekNumber } from '../utils/helpers.js';
+import { GameSession } from '../models/GameSession.js';
+import { getWeekNumber, MAX_GAMES_PER_HOUR } from '../utils/helpers.js';
 
 const router = express.Router();
 
@@ -29,11 +30,24 @@ router.get('/:address', async (req: Request, res: Response) => {
     }
 
     const currentWeek = getWeekNumber();
-    const weeklyScore = await Score.findOne(
+    
+    // Get player's weekly accumulated score
+    const gameSession = await GameSession.findOne(
+      { playerAddress: address, weekNumber: currentWeek },
+      { weeklyAccumulatedScore: 1, gamesPlayedInCurrentHour: 1, firstGameInHour: 1 }
+    );
+    
+    // Get player's best individual score for the week
+    const weeklyBestScore = await Score.findOne(
       { playerAddress: address, weekNumber: currentWeek, isValid: true },
       { score: 1 },
       { sort: { score: -1 } }
     );
+
+    // Calculate games remaining in current hour
+    const gamesRemaining = gameSession ? 
+      Math.max(0, MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour) : 
+      MAX_GAMES_PER_HOUR;
 
     res.json({
       address: player.address,
@@ -42,7 +56,9 @@ router.get('/:address', async (req: Request, res: Response) => {
       createdAt: player.createdAt,
       totalScoresSubmitted: player.totalScoresSubmitted,
       lifetimeEarnings: player.lifetimeEarnings,
-      currentWeekScore: weeklyScore?.score || 0
+      weeklyBestScore: weeklyBestScore?.score || 0,
+      weeklyAccumulatedScore: gameSession?.weeklyAccumulatedScore || 0,
+      gamesRemaining
     });
   } catch (error) {
     console.error('Player stats error:', error);
