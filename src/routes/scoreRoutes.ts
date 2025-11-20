@@ -5,6 +5,8 @@ import { rateLimit } from 'express-rate-limit';
 import { Player } from '../models/Player.js';
 import { Score } from '../models/Score.js';
 import { GameSession } from '../models/GameSession.js';
+import { jwtAuth } from '../middleware/auth.js';
+import type { AuthRequest } from '../middleware/auth.js';
 import {
   getWeekNumber,
   isScoreValid,
@@ -34,7 +36,7 @@ interface ValidateScoreRequest {
 }
 
 // Validate and sign score
-router.post('/validate-score', validateScoreLimiter, async (req: Request, res: Response) => {
+router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { playerAddress, score, gameSessionId, timestamp } = req.body as ValidateScoreRequest;
     const signer = req.app.locals.signer as ethers.Wallet;
@@ -217,7 +219,7 @@ router.get('/leaderboard/all-time', async (_req: Request, res: Response) => {
 });
 
 // Get player's current game session status
-router.get('/game-session/:address', async (req: Request, res: Response) => {
+router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Response) => {
   try {
     const addressParam = req.params.address;
     

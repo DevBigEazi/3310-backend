@@ -4,6 +4,8 @@ import { ethers } from 'ethers';
 import { Player } from '../models/Player.js';
 import { Score } from '../models/Score.js';
 import { GameSession } from '../models/GameSession.js';
+import { jwtAuth } from '../middleware/auth.js';
+import type { AuthRequest } from '../middleware/auth.js';
 import { getWeekNumber, MAX_GAMES_PER_HOUR } from '../utils/helpers.js';
 
 const router = express.Router();
@@ -67,9 +69,11 @@ router.get('/:address', async (req: Request, res: Response) => {
 });
 
 // Create a new player
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', jwtAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { address, username, email } = req.body;
+    // Get address from request body
+    const { address } = req.body;
+    const { username, email } = req.body;
     
     if (!address) {
       return res.status(400).json({ error: 'Wallet address is required' });
