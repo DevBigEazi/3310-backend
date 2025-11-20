@@ -1,16 +1,18 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { ethers } from 'ethers';
+import { jwtAuth } from '../middleware/auth.js';
+import type { AuthRequest } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Admin: Get backend signer address (for contract verification)
-router.get('/signer', (req: Request, res: Response) => {
+router.get('/signer', jwtAuth, (req: AuthRequest, res: Response) => {
   const signer = req.app.locals.signer as ethers.Wallet;
   
   res.json({
     signerAddress: signer.address,
-    message: 'Use this address to verify signatures in your smart contract'
+    message: 'Admin signer address to verify signatures in the smart contract'
   });
 });
 
