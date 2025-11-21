@@ -15,7 +15,8 @@ import {
   formatTimeRemaining,
   MAX_GAMES_PER_HOUR,
   HOUR_IN_MS,
-  isInSubmissionPeriod
+  isInSubmissionPeriod,
+  checkAndRewardReferrer
 } from '../utils/helpers.js';
 
 const router = express.Router();
@@ -40,7 +41,6 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
   try {
     const { playerAddress, score, gameSessionId, timestamp } = req.body as ValidateScoreRequest;
     const signer = req.app.locals.signer as ethers.Wallet;
-    const normalizedAddress = playerAddress.toLowerCase();
     const now = new Date();
     const currentWeek = getWeekNumber(now);
 
@@ -67,14 +67,14 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
 
     // Get or create player game session for the current week
     let gameSession = await GameSession.findOne({
-      playerAddress: normalizedAddress,
+      playerAddress,
       weekNumber: currentWeek
     });
 
     if (!gameSession) {
       // First game of the week for this player
       gameSession = new GameSession({
-        playerAddress: normalizedAddress,
+        playerAddress,
         firstGameInHour: now,
         gamesPlayedInCurrentHour: 0,
         weekNumber: currentWeek,
@@ -119,7 +119,7 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
 
     // Save individual score to database
     const scoreDoc = new Score({
-      playerAddress: normalizedAddress,
+      playerAddress,
       score,
       gameSessionId,
       signature,
@@ -131,13 +131,16 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
 
     // Update player stats
     await Player.findOneAndUpdate(
-      { address: normalizedAddress },
+      { address: playerAddress },
       {
         $inc: { totalScoresSubmitted: 1 },
-        $setOnInsert: { address: normalizedAddress }
+        $setOnInsert: { address: playerAddress }
       },
       { upsert: true }
     );
+    
+    // Check if the player has reached 50 points and reward their referrer if applicable
+    await checkAndRewardReferrer(playerAddress, score);
 
     // Calculate games remaining in this hour
     const gamesRemaining = MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour;
@@ -146,7 +149,7 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
       success: true,
       score,
       signature,
-      playerAddress: normalizedAddress,
+      playerAddress,
       gameSessionId,
       timestamp: submitTimestamp,
       weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
