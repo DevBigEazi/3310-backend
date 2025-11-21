@@ -1,4 +1,7 @@
 import { ethers } from 'ethers';
+import crypto from 'crypto';
+import { Player } from '../models/Player.js';
+import { GameSession } from '../models/GameSession.js';
 
 // Config constants
 export const MAX_SCORE = 100000; // Sanity check: max possible score
@@ -90,4 +93,87 @@ export function verifySignature(
   );
   const recovered = ethers.recoverAddress(ethers.toBeHex(messageHash), signature);
   return recovered.toLowerCase() === signer.address.toLowerCase();
+}
+
+// Generate a unique referral code
+export async function generateReferralCode(): Promise<string> {
+  // Keep generating until we find a unique one
+  while (true) {
+    // Generate a random 8-character alphanumeric code
+    const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    
+    // Check if it already exists
+    const existingPlayer = await Player.findOne({ referralCode: code });
+    if (!existingPlayer) {
+      return code;
+    }
+  }
+}
+
+// Check if a player has reached 50 points for the first time
+export async function checkAndRewardReferrer(playerAddress: string, score: number): Promise<void> {
+  try {
+    const player = await Player.findOne({ address: playerAddress });
+    if (!player) {
+      return; // Player not found
+    }
+    
+    // Check if this is the first time the player has reached 50 points
+    const currentWeek = getWeekNumber();
+    const gameSession = await GameSession.findOne({ playerAddress, weekNumber: currentWeek });
+    if (!gameSession) {
+      return;
+    }
+    
+    // If the player just crossed 50 points with this score
+    const previousScore = gameSession.weeklyAccumulatedScore - score;
+    if (previousScore < 50 && gameSession.weeklyAccumulatedScore >= 50) {
+      // If the player was referred by someone, reward the referrer with 50 points
+      if (player.referredBy) {
+        // Update referrer's referral points counter
+        await Player.findOneAndUpdate(
+          { address: player.referredBy },
+          { $inc: { referralPoints: 50 } }
+        );
+        
+        // Add 50 points to referrer's weekly accumulated score
+        const referrerGameSession = await GameSession.findOne({ 
+          playerAddress: player.referredBy, 
+          weekNumber: currentWeek 
+        });
+        
+        if (referrerGameSession) {
+          referrerGameSession.weeklyAccumulatedScore += 50;
+          await referrerGameSession.save();
+          console.log(`Added 50 points to referrer ${player.referredBy}'s weekly score for referral ${playerAddress}`);
+        } else {
+          // Create a new game session for the referrer if they don't have one for this week
+          const newReferrerSession = new GameSession({
+            playerAddress: player.referredBy,
+            firstGameInHour: new Date(),
+            gamesPlayedInCurrentHour: 0,
+            weekNumber: currentWeek,
+            weeklyAccumulatedScore: 50,
+            lastUpdated: new Date()
+          });
+          await newReferrerSession.save();
+          console.log(`Created new game session for referrer ${player.referredBy} with 50 points`);
+        }
+      }
+      
+      // Also give the referred player a 25-point bonus
+      await Player.findOneAndUpdate(
+        { address: playerAddress },
+        { $inc: { referralPoints: 25 } }
+      );
+      
+      // Add 25 points to the referred player's weekly accumulated score
+      gameSession.weeklyAccumulatedScore += 25;
+      await gameSession.save();
+      
+      console.log(`Added 25 bonus points to player ${playerAddress}'s weekly score for reaching 50 points`);
+    }
+  } catch (error) {
+    console.error('Error in checkAndRewardReferrer:', error);
+  }
 }
