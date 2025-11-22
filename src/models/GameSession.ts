@@ -7,6 +7,7 @@ export interface IGameSession extends Document {
   weekNumber: number;
   weeklyAccumulatedScore: number;
   lastUpdated: Date;
+  hasReceived25PointBonus?: boolean;
 }
 
 const gameSessionSchema = new Schema<IGameSession>({
@@ -15,7 +16,8 @@ const gameSessionSchema = new Schema<IGameSession>({
   gamesPlayedInCurrentHour: { type: Number, default: 0 },
   weekNumber: { type: Number, required: true },
   weeklyAccumulatedScore: { type: Number, default: 0 },
-  lastUpdated: { type: Date, default: Date.now }
+  lastUpdated: { type: Date, default: Date.now },
+  hasReceived25PointBonus: { type: Boolean, default: false }
 });
 
 // Compound index for efficient queries
