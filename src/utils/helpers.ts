@@ -19,15 +19,6 @@ export function getWeekNumber(date = new Date()): number {
   return Math.floor(((timestamp / SECONDS_PER_WEEK) + 3) / 1);
 }
 
-// Check if the current time is within the submission period (Saturday 00:00 UTC → Sunday 23:59 UTC)
-export function isInSubmissionPeriod(date = new Date()): boolean {
-  // Convert to the same day numbering as the smart contract (0=Monday, 6=Sunday)
-  const dayOfWeek = ((Math.floor(date.getTime() / 1000) / 86400) + 3) % 7;
-  
-  // Saturday is day 5, Sunday is day 6 in the smart contract's numbering
-  return dayOfWeek === 5 || dayOfWeek === 6;
-}
-
 // Calculate time remaining until next play session
 export function getTimeRemainingUntilNextSession(firstGameTime: Date): {
   canPlay: boolean;
@@ -110,12 +101,12 @@ export async function generateReferralCode(): Promise<string> {
   }
 }
 
-// Check if a player has reached 50 points for the first time
+// Check if a player has reached 50 points for the first time and reward their referrer if applicable
 export async function checkAndRewardReferrer(playerAddress: string, score: number): Promise<void> {
   try {
     const player = await Player.findOne({ address: playerAddress });
-    if (!player) {
-      return; // Player not found
+    if (!player || !player.referredBy) {
+      return; // Player not found or not referred by anyone
     }
     
     // Check if this is the first time the player has reached 50 points
@@ -125,43 +116,50 @@ export async function checkAndRewardReferrer(playerAddress: string, score: numbe
       return;
     }
     
+    // Check if the player has already received the bonus
+    if (gameSession.hasReceived25PointBonus) {
+      return; // Already processed this player's 25-point milestone
+    }
+    
     // If the player just crossed 50 points with this score
-    const previousScore = gameSession.weeklyAccumulatedScore - score;
-    if (previousScore < 50 && gameSession.weeklyAccumulatedScore >= 50) {
-      // If the player was referred by someone, reward the referrer with 50 points
-      if (player.referredBy) {
-        // Update referrer's referral points counter
-        await Player.findOneAndUpdate(
-          { address: player.referredBy },
-          { $inc: { referralPoints: 50 } }
-        );
-        
-        // Add 50 points to referrer's weekly accumulated score
-        const referrerGameSession = await GameSession.findOne({ 
-          playerAddress: player.referredBy, 
-          weekNumber: currentWeek 
+    if (gameSession.weeklyAccumulatedScore >= 50) {
+      // Mark that we've processed the 25-point bonus for this player
+      gameSession.hasReceived25PointBonus = true;
+      
+      // Update referrer's referral points counter (50 points for the referrer)
+      await Player.findOneAndUpdate(
+        { address: player.referredBy },
+        { $inc: { 
+          referralPoints: 50,
+          referralCount: 1 
+        }}
+      );
+      
+      // Add 50 points to referrer's weekly accumulated score
+      const referrerGameSession = await GameSession.findOne({ 
+        playerAddress: player.referredBy, 
+        weekNumber: currentWeek 
+      });
+      
+      if (referrerGameSession) {
+        referrerGameSession.weeklyAccumulatedScore += 50;
+        await referrerGameSession.save();
+        console.log(`Added 50 points to referrer ${player.referredBy}'s weekly score for referral ${playerAddress}`);
+      } else {
+        // Create a new game session for the referrer if they don't have one for this week
+        const newReferrerSession = new GameSession({
+          playerAddress: player.referredBy,
+          firstGameInHour: new Date(),
+          gamesPlayedInCurrentHour: 0,
+          weekNumber: currentWeek,
+          weeklyAccumulatedScore: 50,
+          lastUpdated: new Date()
         });
-        
-        if (referrerGameSession) {
-          referrerGameSession.weeklyAccumulatedScore += 50;
-          await referrerGameSession.save();
-          console.log(`Added 50 points to referrer ${player.referredBy}'s weekly score for referral ${playerAddress}`);
-        } else {
-          // Create a new game session for the referrer if they don't have one for this week
-          const newReferrerSession = new GameSession({
-            playerAddress: player.referredBy,
-            firstGameInHour: new Date(),
-            gamesPlayedInCurrentHour: 0,
-            weekNumber: currentWeek,
-            weeklyAccumulatedScore: 50,
-            lastUpdated: new Date()
-          });
-          await newReferrerSession.save();
-          console.log(`Created new game session for referrer ${player.referredBy} with 50 points`);
-        }
+        await newReferrerSession.save();
+        console.log(`Created new game session for referrer ${player.referredBy} with 50 points`);
       }
       
-      // Also give the referred player a 25-point bonus
+      // Give the referred player a 25-point bonus
       await Player.findOneAndUpdate(
         { address: playerAddress },
         { $inc: { referralPoints: 25 } }
@@ -171,7 +169,7 @@ export async function checkAndRewardReferrer(playerAddress: string, score: numbe
       gameSession.weeklyAccumulatedScore += 25;
       await gameSession.save();
       
-      console.log(`Added 25 bonus points to player ${playerAddress}'s weekly score for reaching 50 points`);
+      console.log(`Processed referral rewards - 50 points to referrer ${player.referredBy}, 25 points to player ${playerAddress}`);
     }
   } catch (error) {
     console.error('Error in checkAndRewardReferrer:', error);

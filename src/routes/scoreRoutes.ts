@@ -15,7 +15,6 @@ import {
   formatTimeRemaining,
   MAX_GAMES_PER_HOUR,
   HOUR_IN_MS,
-  isInSubmissionPeriod,
   checkAndRewardReferrer
 } from '../utils/helpers.js';
 
@@ -120,7 +119,7 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
     // Save individual score to database
     const scoreDoc = new Score({
       playerAddress,
-      score,
+      score, // Save the individual game score, not the accumulated total
       gameSessionId,
       signature,
       submittedAt: now,
@@ -140,7 +139,7 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
     );
     
     // Check if the player has reached 50 points and reward their referrer if applicable
-    await checkAndRewardReferrer(playerAddress, score);
+    await checkAndRewardReferrer(playerAddress, gameSession.weeklyAccumulatedScore);
 
     // Calculate games remaining in this hour
     const gamesRemaining = MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour;
@@ -153,8 +152,8 @@ router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRe
       gameSessionId,
       timestamp: submitTimestamp,
       weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
+      currentWeek,
       gamesRemaining,
-      isSubmissionPeriod: isInSubmissionPeriod(now),
       message: 'Score validated and signed'
     });
   } catch (error) {
@@ -169,25 +168,52 @@ router.get('/leaderboard/weekly', async (_req: Request, res: Response) => {
     const currentWeek = getWeekNumber();
     const MIN_QUALIFICATION_SCORE = 500;
 
-    // Get accumulated scores from GameSession collection
-    const leaderboard = await GameSession.find(
-      { weekNumber: currentWeek },
-      { playerAddress: 1, weeklyAccumulatedScore: 1 }
-    ).sort({ weeklyAccumulatedScore: -1 }).limit(100);
+    // Get accumulated scores from GameSession collection and join with Player for referral points
+    const leaderboard = await GameSession.aggregate([
+      { $match: { weekNumber: currentWeek } },
+      { $lookup: {
+          from: 'players',
+          localField: 'playerAddress',
+          foreignField: 'address',
+          as: 'player'
+      }},
+      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
+      { $addFields: {
+          totalScore: {
+            $add: [
+              '$weeklyAccumulatedScore',
+              { $ifNull: ['$player.referralPoints', 0] }
+            ]
+          }
+      }},
+      { $sort: { 
+    totalScore: -1,
+    'gamesPlayedInCurrentHour': 1,
+    'player.referralPoints': -1,
+    'player.createdAt': 1
+} },
+      { $limit: 100 }
+    ]);
 
     const qualified = leaderboard.filter(entry => entry.weeklyAccumulatedScore >= MIN_QUALIFICATION_SCORE);
     const topTen = qualified.slice(0, 10);
 
     res.json({
+      type: 'weekly',
       weekNumber: currentWeek,
-      qualificationScore: MIN_QUALIFICATION_SCORE,
-      totalPlayers: leaderboard.length,
-      qualifiedPlayers: qualified.length,
-      isSubmissionPeriod: isInSubmissionPeriod(),
-      topTen: topTen.map((entry, idx) => ({
-        rank: idx + 1,
+      totalPlayers: qualified.length,
+      topTen: topTen.map((entry, index) => ({
+        rank: index + 1,
         address: entry.playerAddress,
-        score: entry.weeklyAccumulatedScore
+        score: entry.totalScore,
+        gameScore: entry.weeklyAccumulatedScore,
+        referralPoints: entry.player?.referralPoints || 0
+      })),
+      playerScores: qualified.map(entry => ({
+        address: entry.playerAddress,
+        score: entry.totalScore,
+        gameScore: entry.weeklyAccumulatedScore,
+        referralPoints: entry.player?.referralPoints || 0
       }))
     });
   } catch (error) {
@@ -199,20 +225,58 @@ router.get('/leaderboard/weekly', async (_req: Request, res: Response) => {
 // Get all-time leaderboard
 router.get('/leaderboard/all-time', async (_req: Request, res: Response) => {
   try {
+    // First, get all valid scores grouped by player and sum them up
     const leaderboard = await Score.aggregate([
-      { $match: { isValid: true } },
-      { $group: { _id: '$playerAddress', bestScore: { $max: '$score' } } },
-      { $sort: { bestScore: -1 } },
+      { $match: { 
+        isValid: true,
+        score: { $gt: 0 } // Ensure we only include positive scores
+      }},
+      { $group: { 
+          _id: '$playerAddress', 
+          totalGameScore: { $sum: '$score' },
+          gameCount: { $sum: 1 },
+          lastPlayed: { $max: '$submittedAt' } // Add last played timestamp for tie-breaking
+      }},
+      { $lookup: {
+          from: 'players',
+          localField: '_id',
+          foreignField: 'address',
+          as: 'player'
+      }},
+      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
+      { $addFields: {
+          totalScore: {
+            $add: [
+              '$totalGameScore',
+              { $ifNull: ['$player.referralPoints', 0] }
+            ]
+          }
+      }},
+    { $sort: { 
+    totalScore: -1,
+    gameCount: 1,
+    'player.referralPoints': -1,
+    'player.createdAt': 1
+} },
       { $limit: 100 }
     ]);
 
     res.json({
       type: 'all-time',
       totalPlayers: leaderboard.length,
-      topScores: leaderboard.map((entry: { _id: string; bestScore: number }, idx: number) => ({
+      topScores: leaderboard.map((entry: { 
+        _id: string; 
+        totalGameScore: number;
+        gameCount: number;
+        totalScore: number;
+        player?: { referralPoints: number } 
+      }, idx: number) => ({
         rank: idx + 1,
         address: entry._id,
-        score: entry.bestScore
+        score: entry.totalScore,
+        gameScore: entry.totalGameScore,
+        gameCount: entry.gameCount,
+        referralPoints: entry.player?.referralPoints || 0
       }))
     });
   } catch (error) {
@@ -255,7 +319,6 @@ router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Resp
           ms: 0,
           formatted: '00:00'
         },
-        isSubmissionPeriod: isInSubmissionPeriod()
       });
     }
 
@@ -277,7 +340,6 @@ router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Resp
         formatted: formatTimeRemaining(timeRemaining.timeRemainingMs),
         resetTime: new Date(gameSession.firstGameInHour.getTime() + HOUR_IN_MS).toISOString()
       },
-      isSubmissionPeriod: isInSubmissionPeriod()
     });
   } catch (error) {
     console.error('Game session status error:', error);
