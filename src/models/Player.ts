@@ -10,6 +10,7 @@ export interface IPlayer extends Document {
   referredBy?: string;
   referralCode: string;
   referralPoints: number;
+  referralCount: number;
 }
 
 const playerSchema = new Schema<IPlayer>({
@@ -21,7 +22,8 @@ const playerSchema = new Schema<IPlayer>({
   lifetimeEarnings: { type: Number, default: 0 },
   referredBy: { type: String, lowercase: true },
   referralCode: { type: String, unique: true },
-  referralPoints: { type: Number, default: 0 }
+  referralPoints: { type: Number, default: 0 },
+  referralCount: { type: Number, default: 0, min: 0 }
 });
 
 export const Player = mongoose.model<IPlayer>('Player', playerSchema);
