@@ -11,12 +11,14 @@ export const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
 // Get current week number (starting from Monday) to align with smart contract
 export function getWeekNumber(date = new Date()): number {
-  // Convert to UTC to ensure consistency
-  const timestamp = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 1000;
-  // Calculate week number using the same formula as the smart contract
-  // ((timestamp / SECONDS_PER_WEEK) + 3) / 1
-  const SECONDS_PER_WEEK = 604800;
-  return Math.floor(((timestamp / SECONDS_PER_WEEK) + 3) / 1);
+  const GENESIS_TIMESTAMP = 1763596800;
+  const SECONDS_PER_WEEK = 7 * 24 * 60 * 60; // 604800
+  
+  const currentTimestamp = Math.floor(date.getTime() / 1000);
+  
+  if (currentTimestamp < GENESIS_TIMESTAMP) return 0;
+  
+  return Math.floor((currentTimestamp - GENESIS_TIMESTAMP) / SECONDS_PER_WEEK) + 1;
 }
 
 // Calculate time remaining until next play session
