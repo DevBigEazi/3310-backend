@@ -1,12 +1,12 @@
-import express from 'express';
-import type { Request, Response } from 'express';
-import { ethers } from 'ethers';
-import { rateLimit } from 'express-rate-limit';
-import { Player } from '../models/Player.js';
-import { Score } from '../models/Score.js';
-import { GameSession } from '../models/GameSession.js';
-import { jwtAuth } from '../middleware/auth.js';
-import type { AuthRequest } from '../middleware/auth.js';
+import express from "express";
+import type { Request, Response } from "express";
+import { ethers } from "ethers";
+import { rateLimit } from "express-rate-limit";
+import { Player } from "../models/Player.js";
+import { Score } from "../models/Score.js";
+import { GameSession } from "../models/GameSession.js";
+import { jwtAuth } from "../middleware/auth.js";
+import type { AuthRequest } from "../middleware/auth.js";
 import {
   getWeekNumber,
   isScoreValid,
@@ -15,8 +15,8 @@ import {
   formatTimeRemaining,
   MAX_GAMES_PER_HOUR,
   HOUR_IN_MS,
-  checkAndRewardReferrer
-} from '../utils/helpers.js';
+  checkAndRewardReferrer,
+} from "../utils/helpers.js";
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ const router = express.Router();
 const validateScoreLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10, // Max 10 requests per minute per IP
-  message: { error: 'Too many validation requests' }
+  message: { error: "Too many validation requests" },
 });
 
 // Types
@@ -36,134 +36,279 @@ interface ValidateScoreRequest {
 }
 
 // Validate and sign score
-router.post('/validate-score', validateScoreLimiter, jwtAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { playerAddress, score, gameSessionId, timestamp } = req.body as ValidateScoreRequest;
-    const signer = req.app.locals.signer as ethers.Wallet;
-    const now = new Date();
-    const currentWeek = getWeekNumber(now);
+router.post(
+  "/validate-score",
+  validateScoreLimiter,
+  jwtAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { playerAddress, score, gameSessionId, timestamp } =
+        req.body as ValidateScoreRequest;
+      const signer = req.app.locals.signer as ethers.Wallet;
+      const now = new Date();
+      const currentWeek = getWeekNumber(now);
 
-    // Input validation
-    if (!playerAddress || score === undefined || !gameSessionId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+      // Input validation
+      if (!playerAddress || score === undefined || !gameSessionId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
 
-    // Validate address format
-    if (!ethers.isAddress(playerAddress)) {
-      return res.status(400).json({ error: 'Invalid player address' });
-    }
+      // Validate address format
+      if (!ethers.isAddress(playerAddress)) {
+        return res.status(400).json({ error: "Invalid player address" });
+      }
 
-    // Validate score
-    if (!isScoreValid(score)) {
-      return res.status(400).json({ error: `Score must be between ${process.env.MIN_SCORE || 0} and ${process.env.MAX_SCORE || 100000}` });
-    }
+      // Validate score
+      if (!isScoreValid(score)) {
+        return res
+          .status(400)
+          .json({
+            error: `Score must be between ${process.env.MIN_SCORE || 0} and ${
+              process.env.MAX_SCORE || 100000
+            }`,
+          });
+      }
 
-    // Check for duplicate gameSessionId (prevent replay attacks)
-    const existingSubmission = await Score.findOne({ gameSessionId });
-    if (existingSubmission) {
-      return res.status(400).json({ error: 'Game session already submitted' });
-    }
+      // Check for duplicate gameSessionId (prevent replay attacks)
+      const existingSubmission = await Score.findOne({ gameSessionId });
+      if (existingSubmission) {
+        return res
+          .status(400)
+          .json({ error: "Game session already submitted" });
+      }
 
-    // Get or create player game session for the current week
-    let gameSession = await GameSession.findOne({
-      playerAddress,
-      weekNumber: currentWeek
-    });
-
-    if (!gameSession) {
-      // First game of the week for this player
-      gameSession = new GameSession({
+      // Get or create player game session for the current week
+      let gameSession = await GameSession.findOne({
         playerAddress,
-        firstGameInHour: now,
-        gamesPlayedInCurrentHour: 0,
         weekNumber: currentWeek,
-        weeklyAccumulatedScore: 0,
-        lastUpdated: now
       });
-    }
 
-    // Check if we need to reset the hourly counter
-    const timeRemaining = getTimeRemainingUntilNextSession(gameSession.firstGameInHour);
-    
-    if (timeRemaining.canPlay) {
-      // Hour has passed since first game, reset counter
-      gameSession.gamesPlayedInCurrentHour = 0;
-      gameSession.firstGameInHour = now;
-    }
+      if (!gameSession) {
+        // First game of the week for this player
+        gameSession = new GameSession({
+          playerAddress,
+          firstGameInHour: now,
+          gamesPlayedInCurrentHour: 0,
+          weekNumber: currentWeek,
+          weeklyAccumulatedScore: 0,
+          lastUpdated: now,
+        });
+      }
 
-    // Check if player has reached the hourly game limit
-    if (gameSession.gamesPlayedInCurrentHour >= MAX_GAMES_PER_HOUR) {
-      const resetTime = new Date(gameSession.firstGameInHour.getTime() + HOUR_IN_MS);
-      return res.status(429).json({
-        error: 'Game limit reached for this hour',
-        timeRemaining: {
-          ms: timeRemaining.timeRemainingMs,
-          formatted: formatTimeRemaining(timeRemaining.timeRemainingMs),
-          resetTime: resetTime.toISOString()
-        }
+      // Check if we need to reset the hourly counter
+      const timeRemaining = getTimeRemainingUntilNextSession(
+        gameSession.firstGameInHour
+      );
+
+      if (timeRemaining.canPlay) {
+        // Hour has passed since first game, reset counter
+        gameSession.gamesPlayedInCurrentHour = 0;
+        gameSession.firstGameInHour = now;
+      }
+
+      // Check if player has reached the hourly game limit
+      if (gameSession.gamesPlayedInCurrentHour >= MAX_GAMES_PER_HOUR) {
+        const resetTime = new Date(
+          gameSession.firstGameInHour.getTime() + HOUR_IN_MS
+        );
+        return res.status(429).json({
+          error: "Game limit reached for this hour",
+          timeRemaining: {
+            ms: timeRemaining.timeRemainingMs,
+            formatted: formatTimeRemaining(timeRemaining.timeRemainingMs),
+            resetTime: resetTime.toISOString(),
+          },
+        });
+      }
+
+      // Use provided timestamp or server timestamp
+      const submitTimestamp = timestamp || Math.floor(now.getTime() / 1000);
+
+      // Sign the score
+      const signature = signScore(
+        signer,
+        playerAddress,
+        score,
+        gameSessionId,
+        submitTimestamp
+      );
+
+      // Increment games played counter and update accumulated score
+      gameSession.gamesPlayedInCurrentHour += 1;
+      gameSession.weeklyAccumulatedScore += score;
+      gameSession.lastUpdated = now;
+      await gameSession.save();
+
+      // Save individual score to database
+      const scoreDoc = new Score({
+        playerAddress,
+        score, // Save the individual game score, not the accumulated total
+        gameSessionId,
+        signature,
+        submittedAt: now,
+        weekNumber: currentWeek,
+        isValid: true,
       });
+      await scoreDoc.save();
+
+      // Update player stats
+      await Player.findOneAndUpdate(
+        { address: playerAddress },
+        {
+          $inc: { totalScoresSubmitted: 1 },
+          $setOnInsert: { address: playerAddress },
+        },
+        { upsert: true }
+      );
+
+      // Check if the player has reached 50 points and reward their referrer if applicable
+      await checkAndRewardReferrer(
+        playerAddress,
+        gameSession.weeklyAccumulatedScore
+      );
+
+      // Calculate games remaining in this hour
+      const gamesRemaining =
+        MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour;
+
+      res.json({
+        success: true,
+        score,
+        signature,
+        playerAddress,
+        gameSessionId,
+        timestamp: submitTimestamp,
+        weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
+        currentWeek,
+        gamesRemaining,
+        message: "Score validated and signed",
+      });
+    } catch (error) {
+      console.error("Validation error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+/**
+ * Get current week's aggregated metrics for smart contract submission
+ * Called when player wants to submit their score to the smart contract
+ */
+router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
+  try {
+    const addressParam = req.params.address;
+
+    if (!addressParam) {
+      return res.status(400).json({ error: "Address parameter is required" });
     }
 
-    // Use provided timestamp or server timestamp
-    const submitTimestamp = timestamp || Math.floor(now.getTime() / 1000);
+    const address = addressParam.toLowerCase();
 
-    // Sign the score
-    const signature = signScore(signer, playerAddress, score, gameSessionId, submitTimestamp);
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({ error: "Invalid address" });
+    }
 
-    // Increment games played counter and update accumulated score
-    gameSession.gamesPlayedInCurrentHour += 1;
-    gameSession.weeklyAccumulatedScore += score;
-    gameSession.lastUpdated = now;
-    await gameSession.save();
+    const currentWeek = getWeekNumber();
+    const signer = req.app.locals.signer as ethers.Wallet;
+    const MIN_QUALIFICATION_SCORE = 500;
 
-    // Save individual score to database
-    const scoreDoc = new Score({
-      playerAddress,
-      score, // Save the individual game score, not the accumulated total
-      gameSessionId,
-      signature,
-      submittedAt: now,
-      weekNumber: currentWeek,
-      isValid: true
-    });
-    await scoreDoc.save();
-
-    // Update player stats
-    await Player.findOneAndUpdate(
-      { address: playerAddress },
+    // 1. Get aggregated game scores for the week
+    const stats = await Score.aggregate([
       {
-        $inc: { totalScoresSubmitted: 1 },
-        $setOnInsert: { address: playerAddress }
+        $match: {
+          playerAddress: address,
+          weekNumber: currentWeek,
+          isValid: true,
+        },
       },
-      { upsert: true }
-    );
-    
-    // Check if the player has reached 50 points and reward their referrer if applicable
-    await checkAndRewardReferrer(playerAddress, gameSession.weeklyAccumulatedScore);
+      {
+        $group: {
+          _id: null,
+          totalScore: { $sum: "$score" },
+          highestGameScore: { $max: "$score" },
+          gameCount: { $sum: 1 },
+        },
+      },
+    ]);
 
-    // Calculate games remaining in this hour
-    const gamesRemaining = MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour;
+    const weeklyStats = stats[0] || {
+      totalScore: 0,
+      highestGameScore: 0,
+      gameCount: 0,
+    };
+
+    // 2. Get referral points
+    const player = await Player.findOne({ address });
+    const referralPoints = player?.referralPoints || 0;
+
+    // 3. COMBINE score + referral points for submission
+    const combinedScore = weeklyStats.totalScore + referralPoints;
+
+    // 4. Check qualification based on COMBINED score
+    if (combinedScore < MIN_QUALIFICATION_SCORE) {
+      return res.status(400).json({
+        error: `Score must be at least ${MIN_QUALIFICATION_SCORE} to submit`,
+        currentScore: combinedScore,
+        scoreNeeded: MIN_QUALIFICATION_SCORE - combinedScore,
+      });
+    }
+
+    // 5. Create the message hash using abi.encodePacked format
+    // Send COMBINED score (game score + referral points)
+    const messageHash = ethers.keccak256(
+      ethers.solidityPacked(
+        ["address", "uint256", "uint256", "uint256", "uint256", "uint256"],
+        [
+          address,
+          currentWeek,
+          combinedScore, // Game score + referral points
+          weeklyStats.highestGameScore,
+          weeklyStats.gameCount,
+          referralPoints, // Also included for tiebreaker logic
+        ]
+      )
+    );
+
+    // 6. Create the Ethereum signed message (adds the prefix)
+    const messageHashBytes = ethers.getBytes(messageHash);
+    const ethSignedMessageHash = ethers.hashMessage(messageHashBytes);
+
+    // 7. Sign and get the signature as a hex string
+    const signature = signer.signingKey.sign(ethSignedMessageHash).serialized;
+
+    console.log("Signature generation debug:", {
+      address,
+      currentWeek,
+      gameScore: weeklyStats.totalScore,
+      referralPoints,
+      combinedScore: combinedScore, // Total for ranking
+      highestGameScore: weeklyStats.highestGameScore,
+      gameCount: weeklyStats.gameCount,
+      messageHash,
+      ethSignedMessageHash,
+      signature,
+      signatureType: typeof signature,
+    });
 
     res.json({
       success: true,
-      score,
-      signature,
-      playerAddress,
-      gameSessionId,
-      timestamp: submitTimestamp,
-      weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
-      currentWeek,
-      gamesRemaining,
-      message: 'Score validated and signed'
+      weekId: currentWeek,
+      playerAddress: address,
+      score: combinedScore, // Combined score for ranking
+      gameScore: weeklyStats.highestGameScore,
+      gameCount: weeklyStats.gameCount,
+      referralPoints: referralPoints, // Still sent for tiebreaker
+      signature: signature,
+      message: "Ready to submit to smart contract",
     });
   } catch (error) {
-    console.error('Validation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Weekly stats error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Get player leaderboard (current week)
-router.get('/leaderboard/weekly', async (_req: Request, res: Response) => {
+router.get("/leaderboard/weekly", async (_req: Request, res: Response) => {
   try {
     const currentWeek = getWeekNumber();
     const MIN_QUALIFICATION_SCORE = 500;
@@ -171,35 +316,43 @@ router.get('/leaderboard/weekly', async (_req: Request, res: Response) => {
     // Get accumulated scores from GameSession collection and join with Player for referral points
     const leaderboard = await GameSession.aggregate([
       { $match: { weekNumber: currentWeek } },
-      { $lookup: {
-          from: 'players',
-          localField: 'playerAddress',
-          foreignField: 'address',
-          as: 'player'
-      }},
-      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
-      { $addFields: {
+      {
+        $lookup: {
+          from: "players",
+          localField: "playerAddress",
+          foreignField: "address",
+          as: "player",
+        },
+      },
+      { $unwind: { path: "$player", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
           totalScore: {
             $add: [
-              '$weeklyAccumulatedScore',
-              { $ifNull: ['$player.referralPoints', 0] }
-            ]
-          }
-      }},
-      { $sort: { 
-    totalScore: -1,
-    'gamesPlayedInCurrentHour': 1,
-    'player.referralPoints': -1,
-    'player.createdAt': 1
-} },
-      { $limit: 100 }
+              "$weeklyAccumulatedScore",
+              { $ifNull: ["$player.referralPoints", 0] },
+            ],
+          },
+        },
+      },
+      {
+        $sort: {
+          totalScore: -1,
+          gamesPlayedInCurrentHour: 1,
+          "player.referralPoints": -1,
+          "player.createdAt": 1,
+        },
+      },
+      { $limit: 100 },
     ]);
 
-    const qualified = leaderboard.filter(entry => entry.weeklyAccumulatedScore >= MIN_QUALIFICATION_SCORE);
+    const qualified = leaderboard.filter(
+      (entry) => entry.weeklyAccumulatedScore >= MIN_QUALIFICATION_SCORE
+    );
     const topTen = qualified.slice(0, 10);
 
     res.json({
-      type: 'weekly',
+      type: "weekly",
       weekNumber: currentWeek,
       totalPlayers: qualified.length,
       topTen: topTen.map((entry, index) => ({
@@ -207,103 +360,118 @@ router.get('/leaderboard/weekly', async (_req: Request, res: Response) => {
         address: entry.playerAddress,
         score: entry.totalScore,
         gameScore: entry.weeklyAccumulatedScore,
-        referralPoints: entry.player?.referralPoints || 0
+        referralPoints: entry.player?.referralPoints || 0,
       })),
-      playerScores: qualified.map(entry => ({
+      playerScores: qualified.map((entry) => ({
         address: entry.playerAddress,
         score: entry.totalScore,
         gameScore: entry.weeklyAccumulatedScore,
-        referralPoints: entry.player?.referralPoints || 0
-      }))
+        referralPoints: entry.player?.referralPoints || 0,
+      })),
     });
   } catch (error) {
-    console.error('Leaderboard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Leaderboard error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Get all-time leaderboard
-router.get('/leaderboard/all-time', async (_req: Request, res: Response) => {
+router.get("/leaderboard/all-time", async (_req: Request, res: Response) => {
   try {
     // First, get all valid scores grouped by player and sum them up
     const leaderboard = await Score.aggregate([
-      { $match: { 
-        isValid: true,
-        score: { $gt: 0 } // Ensure we only include positive scores
-      }},
-      { $group: { 
-          _id: '$playerAddress', 
-          totalGameScore: { $sum: '$score' },
+      {
+        $match: {
+          isValid: true,
+          score: { $gt: 0 }, // Ensure we only include positive scores
+        },
+      },
+      {
+        $group: {
+          _id: "$playerAddress",
+          totalGameScore: { $sum: "$score" },
           gameCount: { $sum: 1 },
-          lastPlayed: { $max: '$submittedAt' } // Add last played timestamp for tie-breaking
-      }},
-      { $lookup: {
-          from: 'players',
-          localField: '_id',
-          foreignField: 'address',
-          as: 'player'
-      }},
-      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
-      { $addFields: {
+          lastPlayed: { $max: "$submittedAt" }, // Add last played timestamp for tie-breaking
+        },
+      },
+      {
+        $lookup: {
+          from: "players",
+          localField: "_id",
+          foreignField: "address",
+          as: "player",
+        },
+      },
+      { $unwind: { path: "$player", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
           totalScore: {
             $add: [
-              '$totalGameScore',
-              { $ifNull: ['$player.referralPoints', 0] }
-            ]
-          }
-      }},
-    { $sort: { 
-    totalScore: -1,
-    gameCount: 1,
-    'player.referralPoints': -1,
-    'player.createdAt': 1
-} },
-      { $limit: 100 }
+              "$totalGameScore",
+              { $ifNull: ["$player.referralPoints", 0] },
+            ],
+          },
+        },
+      },
+      {
+        $sort: {
+          totalScore: -1,
+          gameCount: 1,
+          "player.referralPoints": -1,
+          "player.createdAt": 1,
+        },
+      },
+      { $limit: 100 },
     ]);
 
     res.json({
-      type: 'all-time',
+      type: "all-time",
       totalPlayers: leaderboard.length,
-      topScores: leaderboard.map((entry: { 
-        _id: string; 
-        totalGameScore: number;
-        gameCount: number;
-        totalScore: number;
-        player?: { referralPoints: number } 
-      }, idx: number) => ({
-        rank: idx + 1,
-        address: entry._id,
-        score: entry.totalScore,
-        gameScore: entry.totalGameScore,
-        gameCount: entry.gameCount,
-        referralPoints: entry.player?.referralPoints || 0
-      }))
+      topScores: leaderboard.map(
+        (
+          entry: {
+            _id: string;
+            totalGameScore: number;
+            gameCount: number;
+            totalScore: number;
+            player?: { referralPoints: number };
+          },
+          idx: number
+        ) => ({
+          rank: idx + 1,
+          address: entry._id,
+          score: entry.totalScore,
+          gameScore: entry.totalGameScore,
+          gameCount: entry.gameCount,
+          referralPoints: entry.player?.referralPoints || 0,
+        })
+      ),
     });
   } catch (error) {
-    console.error('All-time leaderboard error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("All-time leaderboard error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 // Get player's current game session status
-router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Response) => {
+router.get("/game-session/:address", async (req: Request, res: Response) => {
   try {
     const addressParam = req.params.address;
-    
+
     if (!addressParam) {
-      return res.status(400).json({ error: 'Address parameter is required' });
+      return res.status(400).json({ error: "Address parameter is required" });
     }
-    
+
     const address = addressParam.toLowerCase();
-    
+
     if (!ethers.isAddress(address)) {
-      return res.status(400).json({ error: 'Invalid address' });
+      return res.status(400).json({ error: "Invalid address" });
     }
 
     const currentWeek = getWeekNumber();
     const gameSession = await GameSession.findOne({
       playerAddress: address,
-      weekNumber: currentWeek
+      weekNumber: currentWeek,
     });
 
     if (!gameSession) {
@@ -317,14 +485,18 @@ router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Resp
         canPlay: true,
         timeRemaining: {
           ms: 0,
-          formatted: '00:00'
+          formatted: "00:00",
         },
       });
     }
 
     // Check if we need to reset the hourly counter
-    const timeRemaining = getTimeRemainingUntilNextSession(gameSession.firstGameInHour);
-    const gamesPlayedInCurrentHour = timeRemaining.canPlay ? 0 : gameSession.gamesPlayedInCurrentHour;
+    const timeRemaining = getTimeRemainingUntilNextSession(
+      gameSession.firstGameInHour
+    );
+    const gamesPlayedInCurrentHour = timeRemaining.canPlay
+      ? 0
+      : gameSession.gamesPlayedInCurrentHour;
     const gamesRemaining = MAX_GAMES_PER_HOUR - gamesPlayedInCurrentHour;
     const canPlay = gamesRemaining > 0 || timeRemaining.canPlay;
 
@@ -338,12 +510,14 @@ router.get('/game-session/:address', jwtAuth, async (req: AuthRequest, res: Resp
       timeRemaining: {
         ms: timeRemaining.timeRemainingMs,
         formatted: formatTimeRemaining(timeRemaining.timeRemainingMs),
-        resetTime: new Date(gameSession.firstGameInHour.getTime() + HOUR_IN_MS).toISOString()
+        resetTime: new Date(
+          gameSession.firstGameInHour.getTime() + HOUR_IN_MS
+        ).toISOString(),
       },
     });
   } catch (error) {
-    console.error('Game session status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Game session status error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

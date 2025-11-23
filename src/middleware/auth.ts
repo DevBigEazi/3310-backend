@@ -14,6 +14,7 @@ const getJwtSecret = (): string | undefined => {
 
 // Extended Request interface to include JWT payload
 export interface AuthRequest extends Request {
+  [x: string]: any;
   jwtPayload?: Record<string, any>;
 }
 
