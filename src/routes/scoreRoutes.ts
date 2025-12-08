@@ -8,7 +8,7 @@ import { GameSession } from "../models/GameSession.js";
 import { jwtAuth } from "../middleware/auth.js";
 import type { AuthRequest } from "../middleware/auth.js";
 import {
-  getWeekNumber,
+  getDayId,
   isScoreValid,
   signScore,
   getTimeRemainingUntilNextSession,
@@ -46,7 +46,7 @@ router.post(
         req.body as ValidateScoreRequest;
       const signer = req.app.locals.signer as ethers.Wallet;
       const now = new Date();
-      const currentWeek = getWeekNumber(now);
+      const currentDay = getDayId(now);
 
       // Input validation
       if (!playerAddress || score === undefined || !gameSessionId) {
@@ -63,9 +63,8 @@ router.post(
         return res
           .status(400)
           .json({
-            error: `Score must be between ${process.env.MIN_SCORE || 0} and ${
-              process.env.MAX_SCORE || 100000
-            }`,
+            error: `Score must be between ${process.env.MIN_SCORE || 0} and ${process.env.MAX_SCORE || 100000
+              }`,
           });
       }
 
@@ -80,7 +79,7 @@ router.post(
       // Get or create player game session for the current week
       let gameSession = await GameSession.findOne({
         playerAddress,
-        weekNumber: currentWeek,
+        dayId: currentDay,
       });
 
       if (!gameSession) {
@@ -89,8 +88,8 @@ router.post(
           playerAddress,
           firstGameInHour: now,
           gamesPlayedInCurrentHour: 0,
-          weekNumber: currentWeek,
-          weeklyAccumulatedScore: 0,
+          dayId: currentDay,
+          dailyAccumulatedScore: 0,
           lastUpdated: now,
         });
       }
@@ -135,7 +134,7 @@ router.post(
 
       // Increment games played counter and update accumulated score
       gameSession.gamesPlayedInCurrentHour += 1;
-      gameSession.weeklyAccumulatedScore += score;
+      gameSession.dailyAccumulatedScore += score;
       gameSession.lastUpdated = now;
       await gameSession.save();
 
@@ -146,7 +145,7 @@ router.post(
         gameSessionId,
         signature,
         submittedAt: now,
-        weekNumber: currentWeek,
+        dayId: currentDay,
         isValid: true,
       });
       await scoreDoc.save();
@@ -164,7 +163,7 @@ router.post(
       // Check if the player has reached 50 points and reward their referrer if applicable
       await checkAndRewardReferrer(
         playerAddress,
-        gameSession.weeklyAccumulatedScore
+        gameSession.dailyAccumulatedScore
       );
 
       // Calculate games remaining in this hour
@@ -178,8 +177,8 @@ router.post(
         playerAddress,
         gameSessionId,
         timestamp: submitTimestamp,
-        weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
-        currentWeek,
+        dailyAccumulatedScore: gameSession.dailyAccumulatedScore,
+        currentDay,
         gamesRemaining,
         message: "Score validated and signed",
       });
@@ -191,10 +190,10 @@ router.post(
 );
 
 /**
- * Get current week's aggregated metrics for smart contract submission
+ * Get current day's aggregated metrics for smart contract submission
  * Called when player wants to submit their score to the smart contract
  */
-router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
+router.get("/daily-stats/:address", async (req: Request, res: Response) => {
   try {
     const addressParam = req.params.address;
 
@@ -208,16 +207,16 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid address" });
     }
 
-    const currentWeek = getWeekNumber();
+    const currentDay = getDayId();
     const signer = req.app.locals.signer as ethers.Wallet;
     const MIN_QUALIFICATION_SCORE = 500;
 
-    // 1. Get aggregated game scores for the week
+    // 1. Get aggregated game scores for the day
     const stats = await Score.aggregate([
       {
         $match: {
           playerAddress: address,
-          weekNumber: currentWeek,
+          dayId: currentDay,
           isValid: true,
         },
       },
@@ -231,7 +230,7 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
       },
     ]);
 
-    const weeklyStats = stats[0] || {
+    const dailyStats = stats[0] || {
       totalScore: 0,
       highestGameScore: 0,
       gameCount: 0,
@@ -242,7 +241,7 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
     const referralPoints = player?.referralPoints || 0;
 
     // 3. COMBINE score + referral points for submission
-    const combinedScore = weeklyStats.totalScore + referralPoints;
+    const combinedScore = dailyStats.totalScore + referralPoints;
 
     // 4. Check qualification based on COMBINED score
     if (combinedScore < MIN_QUALIFICATION_SCORE) {
@@ -260,10 +259,10 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
         ["address", "uint256", "uint256", "uint256", "uint256", "uint256"],
         [
           address,
-          currentWeek,
+          currentDay,
           combinedScore, // Game score + referral points
-          weeklyStats.highestGameScore,
-          weeklyStats.gameCount,
+          dailyStats.highestGameScore,
+          dailyStats.gameCount,
           referralPoints, // Also included for tiebreaker logic
         ]
       )
@@ -278,12 +277,12 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
 
     console.log("Signature generation debug:", {
       address,
-      currentWeek,
-      gameScore: weeklyStats.totalScore,
+      currentDay,
+      gameScore: dailyStats.totalScore,
       referralPoints,
       combinedScore: combinedScore, // Total for ranking
-      highestGameScore: weeklyStats.highestGameScore,
-      gameCount: weeklyStats.gameCount,
+      highestGameScore: dailyStats.highestGameScore,
+      gameCount: dailyStats.gameCount,
       messageHash,
       ethSignedMessageHash,
       signature,
@@ -292,30 +291,30 @@ router.get("/weekly-stats/:address", async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      weekId: currentWeek,
+      dayId: currentDay,
       playerAddress: address,
       score: combinedScore, // Combined score for ranking
-      gameScore: weeklyStats.highestGameScore,
-      gameCount: weeklyStats.gameCount,
+      gameScore: dailyStats.highestGameScore,
+      gameCount: dailyStats.gameCount,
       referralPoints: referralPoints, // Still sent for tiebreaker
       signature: signature,
       message: "Ready to submit to smart contract",
     });
   } catch (error) {
-    console.error("Weekly stats error:", error);
+    console.error("Daily stats error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Get player leaderboard (current week)
-router.get("/leaderboard/weekly", async (_req: Request, res: Response) => {
+// Get player leaderboard (current day)
+router.get("/leaderboard/daily", async (_req: Request, res: Response) => {
   try {
-    const currentWeek = getWeekNumber();
+    const currentDay = getDayId();
     const MIN_QUALIFICATION_SCORE = 500;
 
     // Get accumulated scores from GameSession collection and join with Player for referral points
     const leaderboard = await GameSession.aggregate([
-      { $match: { weekNumber: currentWeek } },
+      { $match: { dayId: currentDay } },
       {
         $lookup: {
           from: "players",
@@ -329,7 +328,7 @@ router.get("/leaderboard/weekly", async (_req: Request, res: Response) => {
         $addFields: {
           totalScore: {
             $add: [
-              "$weeklyAccumulatedScore",
+              "$dailyAccumulatedScore",
               { $ifNull: ["$player.referralPoints", 0] },
             ],
           },
@@ -347,25 +346,25 @@ router.get("/leaderboard/weekly", async (_req: Request, res: Response) => {
     ]);
 
     const qualified = leaderboard.filter(
-      (entry) => entry.weeklyAccumulatedScore >= MIN_QUALIFICATION_SCORE
+      (entry) => entry.dailyAccumulatedScore >= MIN_QUALIFICATION_SCORE
     );
     const topTen = qualified.slice(0, 10);
 
     res.json({
-      type: "weekly",
-      weekNumber: currentWeek,
+      type: "daily",
+      dayId: currentDay,
       totalPlayers: qualified.length,
       topTen: topTen.map((entry, index) => ({
         rank: index + 1,
         address: entry.playerAddress,
         score: entry.totalScore,
-        gameScore: entry.weeklyAccumulatedScore,
+        gameScore: entry.dailyAccumulatedScore,
         referralPoints: entry.player?.referralPoints || 0,
       })),
       playerScores: qualified.map((entry) => ({
         address: entry.playerAddress,
         score: entry.totalScore,
-        gameScore: entry.weeklyAccumulatedScore,
+        gameScore: entry.dailyAccumulatedScore,
         referralPoints: entry.player?.referralPoints || 0,
       })),
     });
@@ -468,18 +467,18 @@ router.get("/game-session/:address", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid address" });
     }
 
-    const currentWeek = getWeekNumber();
+    const currentDay = getDayId();
     const gameSession = await GameSession.findOne({
       playerAddress: address,
-      weekNumber: currentWeek,
+      dayId: currentDay,
     });
 
     if (!gameSession) {
       // No game session found for this week
       return res.json({
         playerAddress: address,
-        weekNumber: currentWeek,
-        weeklyAccumulatedScore: 0,
+        dayId: currentDay,
+        dailyAccumulatedScore: 0,
         gamesPlayedInCurrentHour: 0,
         gamesRemaining: MAX_GAMES_PER_HOUR,
         canPlay: true,
@@ -502,8 +501,8 @@ router.get("/game-session/:address", async (req: Request, res: Response) => {
 
     res.json({
       playerAddress: address,
-      weekNumber: currentWeek,
-      weeklyAccumulatedScore: gameSession.weeklyAccumulatedScore,
+      dayId: currentDay,
+      dailyAccumulatedScore: gameSession.dailyAccumulatedScore,
       gamesPlayedInCurrentHour,
       gamesRemaining,
       canPlay,

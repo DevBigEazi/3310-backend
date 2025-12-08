@@ -6,7 +6,7 @@ import { Score } from '../models/Score.js';
 import { GameSession } from '../models/GameSession.js';
 import { jwtAuth } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
-import { getWeekNumber, MAX_GAMES_PER_HOUR, generateReferralCode } from '../utils/helpers.js';
+import { getDayId, MAX_GAMES_PER_HOUR, generateReferralCode } from '../utils/helpers.js';
 
 const router = express.Router();
 
@@ -14,13 +14,13 @@ const router = express.Router();
 router.get('/:address', async (req: Request, res: Response) => {
   try {
     const addressParam = req.params.address;
-    
+
     if (!addressParam) {
       return res.status(400).json({ error: 'Address parameter is required' });
     }
-    
+
     const address = addressParam.toLowerCase();
-    
+
     if (!ethers.isAddress(address)) {
       return res.status(400).json({ error: 'Invalid address' });
     }
@@ -31,24 +31,24 @@ router.get('/:address', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Player not found' });
     }
 
-    const currentWeek = getWeekNumber();
-    
-    // Get player's weekly accumulated score
+    const currentDay = getDayId();
+
+    // Get player's daily accumulated score
     const gameSession = await GameSession.findOne(
-      { playerAddress: address, weekNumber: currentWeek },
-      { weeklyAccumulatedScore: 1, gamesPlayedInCurrentHour: 1, firstGameInHour: 1 }
+      { playerAddress: address, dayId: currentDay },
+      { dailyAccumulatedScore: 1, gamesPlayedInCurrentHour: 1, firstGameInHour: 1 }
     );
-    
-    // Get player's best individual score for the week
-    const weeklyBestScore = await Score.findOne(
-      { playerAddress: address, weekNumber: currentWeek, isValid: true },
+
+    // Get player's best individual score for the day
+    const dailyBestScore = await Score.findOne(
+      { playerAddress: address, dayId: currentDay, isValid: true },
       { score: 1 },
       { sort: { score: -1 } }
     );
 
     // Calculate games remaining in current hour
-    const gamesRemaining = gameSession ? 
-      Math.max(0, MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour) : 
+    const gamesRemaining = gameSession ?
+      Math.max(0, MAX_GAMES_PER_HOUR - gameSession.gamesPlayedInCurrentHour) :
       MAX_GAMES_PER_HOUR;
 
     res.json({
@@ -58,8 +58,8 @@ router.get('/:address', async (req: Request, res: Response) => {
       createdAt: player.createdAt,
       totalScoresSubmitted: player.totalScoresSubmitted,
       lifetimeEarnings: player.lifetimeEarnings,
-      weeklyBestScore: weeklyBestScore?.score || 0,
-      weeklyAccumulatedScore: gameSession?.weeklyAccumulatedScore || 0,
+      dailyBestScore: dailyBestScore?.score || 0,
+      dailyAccumulatedScore: gameSession?.dailyAccumulatedScore || 0,
       gamesRemaining,
       referralCode: player.referralCode,
       referralPoints: player.referralPoints
@@ -76,13 +76,13 @@ router.post('/', jwtAuth, async (req: AuthRequest, res: Response) => {
     // Get address from request body
     const { address } = req.body;
     const { username, email, referralCode } = req.body;
-    
+
     if (!address) {
       return res.status(400).json({ error: 'Wallet address is required' });
     }
-    
+
     const normalizedAddress = address.toLowerCase();
-    
+
     if (!ethers.isAddress(normalizedAddress)) {
       return res.status(400).json({ error: 'Invalid wallet address' });
     }
@@ -112,7 +112,7 @@ router.post('/', jwtAuth, async (req: AuthRequest, res: Response) => {
       }
       return res.status(409).json({ error: 'Player already exists', player: existingPlayer });
     }
-    
+
     // Check if username or email already exists
     if (username) {
       const existingUsername = await Player.findOne({ username });
@@ -120,14 +120,14 @@ router.post('/', jwtAuth, async (req: AuthRequest, res: Response) => {
         return res.status(409).json({ error: 'Username already taken', field: 'username' });
       }
     }
-    
+
     if (email) {
       const existingEmail = await Player.findOne({ email });
       if (existingEmail) {
         return res.status(409).json({ error: 'Email already registered', field: 'email' });
       }
     }
-    
+
     // Check if referral code is valid
     let referredBy;
     if (referralCode) {
@@ -179,13 +179,13 @@ router.post('/', jwtAuth, async (req: AuthRequest, res: Response) => {
 router.get('/:address/referrals', async (req: Request, res: Response) => {
   try {
     const addressParam = req.params.address;
-    
+
     if (!addressParam) {
       return res.status(400).json({ error: 'Address parameter is required' });
     }
-    
+
     const address = addressParam.toLowerCase();
-    
+
     if (!ethers.isAddress(address)) {
       return res.status(400).json({ error: 'Invalid address' });
     }
