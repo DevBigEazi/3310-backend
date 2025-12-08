@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Player } from '../models/Player.js';
 import { GameSession } from '../models/GameSession.js';
-import { checkAndRewardReferrer, getWeekNumber } from '../utils/helpers.js';
+import { checkAndRewardReferrer, getDayId } from '../utils/helpers.js';
 
 // Get the directory path of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +28,7 @@ async function testReferralRewards() {
     // Create a test referrer
     const referrerAddress = '0x1234567890123456789012345678901234567890';
     let referrer = await Player.findOne({ address: referrerAddress });
-    
+
     if (!referrer) {
       referrer = new Player({
         address: referrerAddress,
@@ -46,7 +46,7 @@ async function testReferralRewards() {
     // Create a test referred player
     const referredAddress = '0x0987654321098765432109876543210987654321';
     let referred = await Player.findOne({ address: referredAddress });
-    
+
     if (!referred) {
       referred = new Player({
         address: referredAddress,
@@ -66,10 +66,10 @@ async function testReferralRewards() {
     }
 
     // Create or update game session for referred player
-    const currentWeek = getWeekNumber();
+    const currentDay = getDayId();
     let gameSession = await GameSession.findOne({
       playerAddress: referredAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
 
     if (!gameSession) {
@@ -77,8 +77,8 @@ async function testReferralRewards() {
         playerAddress: referredAddress,
         firstGameInHour: new Date(),
         gamesPlayedInCurrentHour: 0,
-        weekNumber: currentWeek,
-        weeklyAccumulatedScore: 0,
+        dayId: currentDay,
+        dailyAccumulatedScore: 0,
         lastUpdated: new Date()
       });
     }
@@ -86,81 +86,81 @@ async function testReferralRewards() {
     // Simulate scoring 30 points (not enough to trigger reward)
     console.log('Before first score - Referrer points:', referrer.referralPoints);
     console.log('Before first score - Referred player points:', referred.referralPoints);
-    gameSession.weeklyAccumulatedScore = 30;
+    gameSession.dailyAccumulatedScore = 30;
     await gameSession.save();
     await checkAndRewardReferrer(referredAddress, 30);
-    
+
     // Check referrer points (should still be 0)
     referrer = await Player.findOne({ address: referrerAddress });
     referred = await Player.findOne({ address: referredAddress });
-    
-    // Get game sessions to check weekly scores
-    let referrerGameSession = await GameSession.findOne({ 
+
+    // Get game sessions to check daily scores
+    let referrerGameSession = await GameSession.findOne({
       playerAddress: referrerAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
-    
+
     console.log('After first score (30 points):');
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
-    console.log('- Referrer weekly score:', referrerGameSession?.weeklyAccumulatedScore || 0);
-    console.log('- Referred weekly score:', gameSession.weeklyAccumulatedScore);
+    console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred daily score:', gameSession.dailyAccumulatedScore);
 
     // Simulate scoring 25 more points (crossing the 50-point threshold)
-    const initialScore = gameSession.weeklyAccumulatedScore;
-    gameSession.weeklyAccumulatedScore = 55; // This is 30 + 25 = 55
+    const initialScore = gameSession.dailyAccumulatedScore;
+    gameSession.dailyAccumulatedScore = 55; // This is 30 + 25 = 55
     await gameSession.save();
     await checkAndRewardReferrer(referredAddress, 25);
-    
+
     // Check referrer points (should now be 50) and referred player points (should now be 25)
     referrer = await Player.findOne({ address: referrerAddress });
     referred = await Player.findOne({ address: referredAddress });
-    
+
     // Get updated game sessions
-    referrerGameSession = await GameSession.findOne({ 
+    referrerGameSession = await GameSession.findOne({
       playerAddress: referrerAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
-    gameSession = await GameSession.findOne({ 
+    gameSession = await GameSession.findOne({
       playerAddress: referredAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
-    
+
     console.log('\nAfter second score (55 total points):');
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
-    console.log('- Referrer weekly score:', referrerGameSession?.weeklyAccumulatedScore || 0);
-    console.log('- Referred weekly score:', gameSession?.weeklyAccumulatedScore || 0);
-    console.log('- Referred player bonus points added:', (gameSession?.weeklyAccumulatedScore || 0) - 55);
+    console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred daily score:', gameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred player bonus points added:', (gameSession?.dailyAccumulatedScore || 0) - 55);
 
     // Simulate scoring more points (should not give more rewards)
-    const scoreBeforeThird = gameSession?.weeklyAccumulatedScore || 0;
+    const scoreBeforeThird = gameSession?.dailyAccumulatedScore || 0;
     if (gameSession) {
-      gameSession.weeklyAccumulatedScore = 75;
+      gameSession.dailyAccumulatedScore = 75;
       await gameSession.save();
     }
     await checkAndRewardReferrer(referredAddress, 20);
-    
+
     // Check referrer points (should still be 50) and referred player points (should still be 25)
     referrer = await Player.findOne({ address: referrerAddress });
     referred = await Player.findOne({ address: referredAddress });
-    
+
     // Get updated game sessions
-    referrerGameSession = await GameSession.findOne({ 
+    referrerGameSession = await GameSession.findOne({
       playerAddress: referrerAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
-    gameSession = await GameSession.findOne({ 
+    gameSession = await GameSession.findOne({
       playerAddress: referredAddress,
-      weekNumber: currentWeek
+      dayId: currentDay
     });
-    
+
     console.log('\nAfter third score (75 total points):');
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
-    console.log('- Referrer weekly score:', referrerGameSession?.weeklyAccumulatedScore || 0);
-    console.log('- Referred weekly score:', gameSession?.weeklyAccumulatedScore || 0);
-    console.log('- No additional bonus should be added:', gameSession?.weeklyAccumulatedScore === 75);
+    console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred daily score:', gameSession?.dailyAccumulatedScore || 0);
+    console.log('- No additional bonus should be added:', gameSession?.dailyAccumulatedScore === 75);
 
   } catch (error) {
     console.error('Test error:', error);

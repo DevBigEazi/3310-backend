@@ -6,12 +6,12 @@ import { GameSession } from '../models/GameSession.js';
 // Config constants
 export const MAX_SCORE = 100000; // Sanity check: max possible score
 export const MIN_SCORE = 0;
-export const MAX_GAMES_PER_HOUR = 5; // Maximum games allowed per hour
+export const MAX_GAMES_PER_HOUR = 3; // Maximum games allowed per hour
 export const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
 // Get current day ID (starting from 1) to align with smart contract
 export function getDayId(date = new Date()): number {
-  const GENESIS_TIMESTAMP = 1763596800; // 2025-11-24 00:00:00 UTC
+  const GENESIS_TIMESTAMP = 1765152000; // 2025-12-08 00:00:00 UTC
   const SECONDS_PER_DAY = 24 * 60 * 60; // 86400
 
   const currentTimestamp = Math.floor(date.getTime() / 1000);

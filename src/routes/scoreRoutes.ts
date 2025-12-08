@@ -136,6 +136,13 @@ router.post(
       gameSession.gamesPlayedInCurrentHour += 1;
       gameSession.dailyAccumulatedScore += score;
       gameSession.lastUpdated = now;
+
+      // If player has reached the hourly limit, reset the hour window to start from now
+      // This forces the player to wait a full hour before playing again
+      if (gameSession.gamesPlayedInCurrentHour >= MAX_GAMES_PER_HOUR) {
+        gameSession.firstGameInHour = now;
+      }
+
       await gameSession.save();
 
       // Save individual score to database
