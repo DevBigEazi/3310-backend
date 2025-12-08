@@ -6,7 +6,7 @@ export interface IScore extends Document {
   gameSessionId: string;
   signature?: string;
   submittedAt: Date;
-  weekNumber?: number;
+  dayId?: number;
   isValid: boolean;
   validationNotes?: string;
 }
@@ -17,7 +17,7 @@ const scoreSchema = new Schema<IScore>({
   gameSessionId: { type: String, required: true, unique: true }, // Prevent replay attacks
   signature: String, // Backend signature
   submittedAt: { type: Date, default: Date.now },
-  weekNumber: Number, // ISO week number for filtering
+  dayId: Number, // Day ID for filtering
   isValid: { type: Boolean, default: true },
   validationNotes: String
 });
