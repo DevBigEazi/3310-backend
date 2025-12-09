@@ -6,6 +6,7 @@ export interface IGameSession extends Document {
   gamesPlayedInCurrentHour: number;
   dayId: number;
   dailyAccumulatedScore: number;
+  dailyReferralPoints: number;
   lastUpdated: Date;
   hasReceived25PointBonus?: boolean;
 }
@@ -16,6 +17,7 @@ const gameSessionSchema = new Schema<IGameSession>({
   gamesPlayedInCurrentHour: { type: Number, default: 0 },
   dayId: { type: Number, required: true },
   dailyAccumulatedScore: { type: Number, default: 0 },
+  dailyReferralPoints: { type: Number, default: 0 },
   lastUpdated: { type: Date, default: Date.now },
   hasReceived25PointBonus: { type: Boolean, default: false }
 });

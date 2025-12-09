@@ -11,7 +11,7 @@ export const HOUR_IN_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 
 // Get current day ID (starting from 1) to align with smart contract
 export function getDayId(date = new Date()): number {
-  const GENESIS_TIMESTAMP = 1765152000; // 2025-12-08 00:00:00 UTC
+  const GENESIS_TIMESTAMP = 1765238400; // 2025-12-08 00:00:00 UTC
   const SECONDS_PER_DAY = 24 * 60 * 60; // 86400
 
   const currentTimestamp = Math.floor(date.getTime() / 1000);
@@ -147,6 +147,7 @@ export async function checkAndRewardReferrer(playerAddress: string, score: numbe
 
       if (referrerGameSession) {
         referrerGameSession.dailyAccumulatedScore += 50;
+        referrerGameSession.dailyReferralPoints += 50;
         await referrerGameSession.save();
         console.log(`Added 50 points to referrer ${player.referredBy}'s daily score for referral ${playerAddress}`);
       } else {
@@ -157,6 +158,7 @@ export async function checkAndRewardReferrer(playerAddress: string, score: numbe
           gamesPlayedInCurrentHour: 0,
           dayId: currentDay,
           dailyAccumulatedScore: 50,
+          dailyReferralPoints: 50,
           lastUpdated: new Date()
         });
         await newReferrerSession.save();
@@ -171,6 +173,7 @@ export async function checkAndRewardReferrer(playerAddress: string, score: numbe
 
       // Add 25 points to the referred player's daily accumulated score
       gameSession.dailyAccumulatedScore += 25;
+      gameSession.dailyReferralPoints += 25;
       await gameSession.save();
 
       console.log(`Processed referral rewards - 50 points to referrer ${player.referredBy}, 25 points to player ${playerAddress}`);

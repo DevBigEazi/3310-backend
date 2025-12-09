@@ -243,12 +243,19 @@ router.get("/daily-stats/:address", async (req: Request, res: Response) => {
       gameCount: 0,
     };
 
-    // 2. Get referral points
+    // 2. Get referral points (daily and lifetime)
     const player = await Player.findOne({ address });
-    const referralPoints = player?.referralPoints || 0;
+    const lifetimeReferralPoints = player?.referralPoints || 0;
 
-    // 3. COMBINE score + referral points for submission
-    const combinedScore = dailyStats.totalScore + referralPoints;
+    const gameSession = await GameSession.findOne({
+      playerAddress: address,
+      dayId: currentDay,
+    });
+    const dailyReferralPoints = gameSession?.dailyReferralPoints || 0;
+
+    // 3. COMBINE score + DAILY referral points for submission
+    // We use dailyReferralPoints (earned today) instead of lifetime points
+    const combinedScore = dailyStats.totalScore + dailyReferralPoints;
 
     // 4. Check qualification based on COMBINED score
     if (combinedScore < MIN_QUALIFICATION_SCORE) {
@@ -259,18 +266,18 @@ router.get("/daily-stats/:address", async (req: Request, res: Response) => {
       });
     }
 
-    // 5. Create the message hash using abi.encodePacked format
-    // Send COMBINED score (game score + referral points)
+    // 6. Create the message hash using abi.encodePacked format
+    // Send COMBINED score (game score + daily referral points)
     const messageHash = ethers.keccak256(
       ethers.solidityPacked(
         ["address", "uint256", "uint256", "uint256", "uint256", "uint256"],
         [
           address,
           currentDay,
-          combinedScore, // Game score + referral points
+          combinedScore, // Game score + DAILY referral points
           dailyStats.highestGameScore,
           dailyStats.gameCount,
-          referralPoints, // Also included for tiebreaker logic
+          lifetimeReferralPoints, // Still included for tiebreaker logic (lifetime)
         ]
       )
     );
@@ -286,7 +293,8 @@ router.get("/daily-stats/:address", async (req: Request, res: Response) => {
       address,
       currentDay,
       gameScore: dailyStats.totalScore,
-      referralPoints,
+      dailyReferralPoints,
+      lifetimeReferralPoints,
       combinedScore: combinedScore, // Total for ranking
       highestGameScore: dailyStats.highestGameScore,
       gameCount: dailyStats.gameCount,
@@ -303,7 +311,7 @@ router.get("/daily-stats/:address", async (req: Request, res: Response) => {
       score: combinedScore, // Combined score for ranking
       gameScore: dailyStats.highestGameScore,
       gameCount: dailyStats.gameCount,
-      referralPoints: referralPoints, // Still sent for tiebreaker
+      referralPoints: lifetimeReferralPoints, // Still sent for tiebreaker
       signature: signature,
       message: "Ready to submit to smart contract",
     });
@@ -333,12 +341,7 @@ router.get("/leaderboard/daily", async (_req: Request, res: Response) => {
       { $unwind: { path: "$player", preserveNullAndEmptyArrays: true } },
       {
         $addFields: {
-          totalScore: {
-            $add: [
-              "$dailyAccumulatedScore",
-              { $ifNull: ["$player.referralPoints", 0] },
-            ],
-          },
+          totalScore: "$dailyAccumulatedScore",
         },
       },
       {
@@ -513,6 +516,7 @@ router.get("/game-session/:address", async (req: Request, res: Response) => {
       gamesPlayedInCurrentHour,
       gamesRemaining,
       canPlay,
+      dailyReferralPoints: gameSession.dailyReferralPoints || 0,
       timeRemaining: {
         ms: timeRemaining.timeRemainingMs,
         formatted: formatTimeRemaining(timeRemaining.timeRemainingMs),

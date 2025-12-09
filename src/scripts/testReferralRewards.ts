@@ -104,7 +104,9 @@ async function testReferralRewards() {
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
     console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referrer daily referral points:', referrerGameSession?.dailyReferralPoints || 0);
     console.log('- Referred daily score:', gameSession.dailyAccumulatedScore);
+    console.log('- Referred daily referral points:', gameSession.dailyReferralPoints || 0);
 
     // Simulate scoring 25 more points (crossing the 50-point threshold)
     const initialScore = gameSession.dailyAccumulatedScore;
@@ -130,7 +132,9 @@ async function testReferralRewards() {
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
     console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referrer daily referral points:', referrerGameSession?.dailyReferralPoints || 0);
     console.log('- Referred daily score:', gameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred daily referral points:', gameSession?.dailyReferralPoints || 0);
     console.log('- Referred player bonus points added:', (gameSession?.dailyAccumulatedScore || 0) - 55);
 
     // Simulate scoring more points (should not give more rewards)
@@ -159,7 +163,9 @@ async function testReferralRewards() {
     console.log('- Referrer points:', referrer?.referralPoints || 0);
     console.log('- Referred player points:', referred?.referralPoints || 0);
     console.log('- Referrer daily score:', referrerGameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referrer daily referral points:', referrerGameSession?.dailyReferralPoints || 0);
     console.log('- Referred daily score:', gameSession?.dailyAccumulatedScore || 0);
+    console.log('- Referred daily referral points:', gameSession?.dailyReferralPoints || 0);
     console.log('- No additional bonus should be added:', gameSession?.dailyAccumulatedScore === 75);
 
   } catch (error) {
