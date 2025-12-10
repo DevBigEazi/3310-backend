@@ -5,7 +5,7 @@ Backend server for the 3310 game, handling score validation, leaderboards, and p
 ## Features
 
 - Score validation and signing
-- dayly and all-time leaderboards
+- daily and all-time leaderboards
 - Player statistics
 - Referral system with rewards
 - Rate limiting to prevent abuse
@@ -78,7 +78,7 @@ yarn start
 ### Scores
 
 - `POST /api/scores/validate-score` - Validate and sign a game score
-- `GET /api/scores/leaderboard/dayly` - Get the current day's leaderboard
+- `GET /api/scores/leaderboard/daily` - Get the current day's leaderboard
 - `GET /api/scores/leaderboard/all-time` - Get the all-time leaderboard
 
 ### Players
@@ -99,9 +99,9 @@ The game includes a referral system where players can refer others and earn rewa
 
 - Each player gets a unique referral code upon registration
 - When a referred player earns their first 50 points:
-  - The referrer receives 50 bonus points added directly to their dayly accumulated score
-  - The referred player receives 25 bonus points added directly to their dayly accumulated score
-- These bonus points immediately boost their chance to compete for dayly rewards
+  - The referrer receives 50 bonus points added directly to their daily accumulated score
+  - The referred player receives 25 bonus points added directly to their daily accumulated score
+- These bonus points immediately boost their chance to compete for daily rewards
 
 See [REFERRAL_SYSTEM.md](./docs/REFERRAL_SYSTEM.md) for detailed documentation.
 
