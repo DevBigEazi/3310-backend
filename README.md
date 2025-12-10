@@ -5,7 +5,7 @@ Backend server for the 3310 game, handling score validation, leaderboards, and p
 ## Features
 
 - Score validation and signing
-- Weekly and all-time leaderboards
+- dayly and all-time leaderboards
 - Player statistics
 - Referral system with rewards
 - Rate limiting to prevent abuse
@@ -20,17 +20,20 @@ Backend server for the 3310 game, handling score validation, leaderboards, and p
 ## Installation
 
 1. Clone the repository:
+
    ```
    git clone https://github.com/DevBigEazi/3310-backend.git
    cd 3310-backend
    ```
 
 2. Install dependencies:
+
    ```
    yarn install
    ```
 
 3. Create a `.env` file based on `.env.example`:
+
    ```
    cp .env.example .env
    ```
@@ -69,14 +72,17 @@ yarn start
 ## API Endpoints
 
 ### Health Check
+
 - `GET /health` - Check if the server is running
 
 ### Scores
+
 - `POST /api/scores/validate-score` - Validate and sign a game score
-- `GET /api/scores/leaderboard/weekly` - Get the current week's leaderboard
+- `GET /api/scores/leaderboard/dayly` - Get the current day's leaderboard
 - `GET /api/scores/leaderboard/all-time` - Get the all-time leaderboard
 
 ### Players
+
 - `GET /api/player/:address` - Get player statistics
 - `POST /api/player` - Create a new player or update existing player
   - Request body: `{ "address": "0x...", "username": "player_name", "email": "player@example.com", "referralCode": "ABC123" }`
@@ -84,6 +90,7 @@ yarn start
 - `GET /api/player/:address/referrals` - Get player's referral information
 
 ### Admin
+
 - `GET /api/admin/signer` - Get the backend signer address for contract verification
 
 ## Referral System
@@ -92,9 +99,9 @@ The game includes a referral system where players can refer others and earn rewa
 
 - Each player gets a unique referral code upon registration
 - When a referred player earns their first 50 points:
-  - The referrer receives 50 bonus points added directly to their weekly accumulated score
-  - The referred player receives 25 bonus points added directly to their weekly accumulated score
-- These bonus points immediately boost their chance to compete for weekly rewards
+  - The referrer receives 50 bonus points added directly to their dayly accumulated score
+  - The referred player receives 25 bonus points added directly to their dayly accumulated score
+- These bonus points immediately boost their chance to compete for dayly rewards
 
 See [REFERRAL_SYSTEM.md](./docs/REFERRAL_SYSTEM.md) for detailed documentation.
 

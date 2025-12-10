@@ -76,14 +76,14 @@ router.post(
           .json({ error: "Game session already submitted" });
       }
 
-      // Get or create player game session for the current week
+      // Get or create player game session for the current day
       let gameSession = await GameSession.findOne({
         playerAddress,
         dayId: currentDay,
       });
 
       if (!gameSession) {
-        // First game of the week for this player
+        // First game of the day for this player
         gameSession = new GameSession({
           playerAddress,
           firstGameInHour: now,
@@ -484,7 +484,7 @@ router.get("/game-session/:address", async (req: Request, res: Response) => {
     });
 
     if (!gameSession) {
-      // No game session found for this week
+      // No game session found for this day
       return res.json({
         playerAddress: address,
         dayId: currentDay,
