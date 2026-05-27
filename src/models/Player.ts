@@ -1,7 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface IPlayer extends Document {
-  address: string;             // Lowercased ZeroDev ERC-4337 smart wallet address
+  address: string;             // Lowercased EIP-7702 delegated wallet address
   username: string;
   email?: string;
   createdAt: Date;

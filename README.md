@@ -1,6 +1,6 @@
 # 3310 Game Backend
 
-This is the Node.js, Express, and TypeScript backend for the **3310 Game** (retro Snake). It is responsible for handling player onboarding (tied to ZeroDev smart account addresses), managing lives and game session refills, tracking weekly/all-time leaderboards, and executing an anti-cheat validation pipeline.
+This is the Node.js, Express, and TypeScript backend for the **3310 Game** (retro Snake). It is responsible for handling player onboarding (tied to EIP-7702 delegated wallet addresses), managing lives and game session refills, tracking weekly/all-time leaderboards, and executing an anti-cheat validation pipeline.
 
 For detailed technical specifications, database schema, time boundaries, and API routes, please refer to the [Technical Documentation](doc/technical_documentation.md).
 
@@ -8,40 +8,49 @@ For detailed technical specifications, database schema, time boundaries, and API
 
 ## 🚀 Key Features
 
-*   **Social & Web3 Auth Integration**: Social onboarding mapped to lowercased ZeroDev ERC-4337 smart wallet addresses.
-*   **Frictionless Lives System**: Enforces a 5-lives capacity with flat 1-hour refill count-downs. Correctly carries stats across daily session boundaries.
-*   **Upfront Attempt Checks**: Pre-validates game limits and lives upfront to prevent bad UX and farming.
-*   **Anti-Cheat Engine**: Prevents session replay attacks and checks score submission speed (cannot exceed 50 points per second).
-*   **Leaderboards with Tiebreakers**: Grouped and sorted by Weekly Accumulated Score (Desc) -> Total Games Played (Asc) -> Referral Points (Desc).
-*   **Referral Allocation**: Auto-generates alphanumeric referral codes, rewarding referrers (50 points) and referred users (25 points).
+- **Social & Web3 Auth Integration**: Social onboarding mapped to lowercased EIP-7702 delegated wallet addresses on Optimism.
+- **Frictionless Lives System**: Enforces a 5-lives capacity with flat 1-hour refill count-downs. Correctly carries stats across daily session boundaries.
+- **Upfront Attempt Checks**: Pre-validates game limits and lives upfront to prevent bad UX and farming.
+- **Anti-Cheat Engine**: Prevents session replay attacks and checks score submission speed (cannot exceed 50 points per second).
+- **Leaderboards with Tiebreakers**: Grouped and sorted by Weekly Accumulated Score (Desc) -> Total Games Played (Asc) -> Referral Points (Desc).
+- **Referral Allocation**: Auto-generates alphanumeric referral codes, rewarding referrers (50 points) and referred users (25 points).
 
 ---
 
 ## 🛠️ Getting Started
 
 ### 1. Installation
+
 Clone the repository and install the dependencies:
+
 ```bash
 npm install
 ```
 
 ### 2. Configuration
+
 Copy the environment variables template and configure your local settings:
+
 ```bash
 cp .env.example .env
 ```
+
 Ensure you define a `JWT_SECRET` and specify your target MongoDB connection string under `MONGODB_URI`.
 
 ### 3. Run Development Server
+
 Start the development server with hot-reloading:
+
 ```bash
 npm run dev
 ```
 
 ### 4. Running the Tests
+
 We include a self-contained integration test suite running on an in-memory database (`mongodb-memory-server`):
+
 ```bash
-npx tsx src/tests/testBackend.ts
+npx tsx src/tests/test.ts
 ```
 
 ---
@@ -72,6 +81,6 @@ backend/
 │   ├── utils/
 │   │   └── timeUtils.ts             # Day and week duration index calculations
 │   └── tests/
-│       └── testBackend.ts           # Automated test pipeline
+│       └── test.ts           # Automated test pipeline
 └── tsconfig.json
 ```
