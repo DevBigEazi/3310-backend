@@ -271,7 +271,7 @@ export const getAllTimeLeaderboard = async (req: AuthRequest, res: Response) => 
       {
         $group: {
           _id: '$playerAddress',
-          highScore: { $max: '$score' },
+          highScore: { $sum: '$score' },
           totalGames: { $sum: 1 }
         }
       },

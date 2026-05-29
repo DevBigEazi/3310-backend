@@ -107,7 +107,7 @@ export const getPlayer = async (req: Request, res: Response) => {
 
     // Calculate score statistics
     const scores = await Score.find({ playerAddress: lowerAddress, isValid: true });
-    const highestScore = scores.length > 0 ? Math.max(...scores.map((s) => s.score)) : 0;
+    const highestScore = scores.reduce((sum, s) => sum + s.score, 0);
     const totalGames = scores.length;
 
     return res.status(200).json({

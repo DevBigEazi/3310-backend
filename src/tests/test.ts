@@ -345,6 +345,40 @@ async function runTests() {
     }
     console.log('Verified tiebreaker sorting: Bob #1 (fewer games played), Alice #2.');
 
+    // 13. Test Flow 11: All-Time Leaderboard and Profile cumulative score
+    console.log('\n[Test 11] Testing All-Time Leaderboard and Profile cumulative score...');
+    // Query All-Time Leaderboard
+    const resAllTime = await fetch(`${BASE_URL}/api/scores/leaderboard/all-time`, {
+      headers: { 'Authorization': `Bearer ${aliceToken}` }
+    });
+    const allTimeData = await resAllTime.json();
+    
+    console.log('All-Time Leaderboard Results:');
+    allTimeData.leaderboard.forEach((entry: any, index: number) => {
+      console.log(`${index + 1}. ${entry.username} - Score: ${entry.highScore}, Games: ${entry.totalGames}`);
+    });
+
+    const aliceEntry = allTimeData.leaderboard.find((entry: any) => entry.username === 'alice_snake');
+    const bobEntry = allTimeData.leaderboard.find((entry: any) => entry.username === 'bob_gamer');
+
+    if (!aliceEntry || aliceEntry.highScore !== 46) {
+      throw new Error(`Alice's all-time score should be 46 (cumulative), got ${aliceEntry?.highScore}`);
+    }
+    if (!bobEntry || bobEntry.highScore !== 46) {
+      throw new Error(`Bob's all-time score should be 46 (cumulative), got ${bobEntry?.highScore}`);
+    }
+    console.log('Verified All-Time Leaderboard uses cumulative scores.');
+
+    // Query Alice profile stats
+    const resAliceProfile2 = await fetch(`${BASE_URL}/api/player/0xAliceSmartAccountAddress0000000000001`, {
+      headers: { 'Authorization': `Bearer ${aliceToken}` }
+    });
+    const aliceProfileData2 = await resAliceProfile2.json();
+    if (aliceProfileData2.stats.highestScore !== 46) {
+      throw new Error(`Alice profile highestScore should be 46 (cumulative), got ${aliceProfileData2.stats.highestScore}`);
+    }
+    console.log('Verified Profile stats uses cumulative score.');
+
     console.log('\n--- ALL TESTS PASSED SUCCESSFULLY! ---');
   } catch (err: any) {
     console.error('\n❌ Test failed:', err.message || err);
