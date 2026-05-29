@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -23,6 +23,7 @@
     "@types/node": "^20.12.7",
     "@types/uuid": "^9.0.8",
     "mongodb-memory-server": "^11.1.0",
+    "nodemon": "^3.1.14",
     "tsx": "^4.7.2",
     "typescript": "^5.4.5"
   }

@@ -122,3 +122,24 @@ export const getPlayer = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
   }
 };
+
+/**
+ * Checks if a player exists by their wallet address.
+ * Public endpoint (does not require JWT).
+ */
+export const checkPlayerExists = async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    if (!address) {
+      return res.status(400).json({ error: 'ADDRESS_REQUIRED' });
+    }
+
+    const lowerAddress = address.toLowerCase();
+    const player = await Player.findOne({ address: lowerAddress });
+
+    return res.status(200).json({ exists: !!player });
+  } catch (error: any) {
+    console.error('Error checking player existence:', error);
+    return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+  }
+};

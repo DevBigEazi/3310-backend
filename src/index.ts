@@ -8,8 +8,8 @@ import scoreRoutes from './routes/scoreRoutes.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/3310-game';
+const PORT = process.env.PORT || 8000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://UserScore:<db_password>@userscore.z7kjy1z.mongodb.net/test';
 
 app.use(cors());
 app.use(express.json());
@@ -20,7 +20,7 @@ app.use('/api/scores', scoreRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date() });
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Database and Server startup
