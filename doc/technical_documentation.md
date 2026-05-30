@@ -118,9 +118,15 @@ Registers a new player profile or logs in an existing player. Returns the player
 - **Referral Rewards**: If referred by a valid code, adds `25` points to the new user and `50` points to the referrer.
 - **Status Codes**: `201 Created` (New player), `200 OK` (Existing login), `400 Bad Request` (Username taken / Missing fields).
 
+#### `GET /api/player/check/:address`
+
+Checks if a player exists by their wallet address. This is a public endpoint and does not require a JWT.
+
+- **Status Codes**: `200 OK` (returns `{ exists: boolean }`), `400 Bad Request` (missing address).
+
 #### `GET /api/player/:address`
 
-Returns core profile metadata and historical stats (single-game high score, total games played).
+Returns core profile metadata and historical stats (cumulative total score, total games played).
 
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Status Codes**: `200 OK`, `404 Not Found`.
@@ -161,7 +167,7 @@ Fetches top 100 players for the week, aggregated via MongoDB pipelines using tie
 
 #### `GET /api/scores/leaderboard/all-time`
 
-Fetches top 100 players sorted by their highest single-game score.
+Fetches top 100 players sorted by their cumulative total score.
 
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Status Codes**: `200 OK`.
@@ -195,9 +201,55 @@ The backend contains a self-contained integration test suite that spins up a moc
 6.  Replay attack prevention (re-submitting a session ID).
 7.  Hourly rate limits (rejecting the 6th game attempt in an hour).
 8.  Tiebreaker-sorted Weekly Leaderboard aggregations.
+9.  All-Time Leaderboard and Profile cumulative score verification.
 
 Run the test suite locally with:
 
 ```bash
 npx tsx src/tests/test.ts
 ```
+
+---
+
+## 7. Serverless Deployment & AWS Lambda Integration
+
+The backend is configured to run serverless on AWS Lambda using the Serverless Framework.
+
+### 7.1 Serverless Wrapper (`serverless-http`)
+The Express application is wrapped using `serverless-http` in [src/index.ts](file:///Users/macuser/Desktop/mobile-dev/3310-game/backend/src/index.ts). This handles translating AWS API Gateway events into standard HTTP requests and vice versa.
+
+### 7.2 Database Connection & Event Loop Management
+To ensure optimal performance and prevent function timeouts in a serverless environment, the following optimization patterns are implemented in the main entry point:
+- **Connection Reuse**: The Mongoose connection instance is defined outside the handler scope. When a Lambda container is warm, it reuses the established MongoDB TCP connection instead of starting a new one, reducing latency by up to 500ms.
+- **Event Loop Bypass**: By setting `context.callbackWaitsForEmptyEventLoop = false`, we instruct AWS Lambda to respond as soon as Express yields a response, without waiting for MongoDB's active connection pool sockets to close (which would otherwise cause Lambda timeouts).
+
+### 7.3 Hybrid Local/Production Execution
+The startup logic uses the `AWS_LAMBDA_FUNCTION_NAME` environment variable to automatically determine its runtime state:
+- **Local Dev / Standalone Server**: If the variable is absent, it establishes a persistent Mongoose connection and launches a standard Express server via `app.listen(PORT)`.
+- **AWS Lambda**: Bypasses the server listener entirely and exposes a stateless `handler` function for Lambda invocations.
+
+### 7.4 Serverless Configuration ([serverless.yml](file:///Users/macuser/Desktop/mobile-dev/3310-game/backend/serverless.yml))
+The infrastructure configuration uses Serverless Framework:
+- **Provider**: AWS, Node.js `nodejs18.x`, deployed in the `us-east-1` region by default.
+- **Stage Support**: Dynamically loads stages using `--stage` CLI flag (defaults to `dev`).
+- **Routes**: Mapped via AWS HTTP API Gateway catch-all event (`httpApi: '*'`) to the compiled `dist/index.handler`.
+- **Packaging Optimization**: Strips development configurations, TypeScript sources, and documentation, packaging only compiled outputs (`dist/**`) and dependencies (`node_modules/**`).
+- **Environment Variables**: Dynamically sources application variables:
+  * `MONGODB_URI`
+  * `JWT_SECRET`
+  * `GENESIS_DATE`
+
+### 7.5 Deployment Commands
+Before deploying, ensure you are authenticated to your AWS account (via `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) and that these keys are set in your environment along with application variables.
+
+```bash
+# Compile TypeScript to dist/
+npm run build
+
+# Deploy to Dev stage
+serverless deploy --stage dev
+
+# Deploy to Prod stage
+serverless deploy --stage prod
+```
+

@@ -1,0 +1,31 @@
+service: backend-3310
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  environment:
+    MONGODB_URI: ${env:MONGODB_URI}
+    JWT_SECRET: ${env:JWT_SECRET}
+    GENESIS_DATE: ${env:GENESIS_DATE}
+
+functions:
+  api:
+    handler: dist/index.handler
+    events:
+      - httpApi: '*'
+
+package:
+  patterns:
+    - '!**'
+    - 'dist/**'
+    - 'package.json'
+    - 'node_modules/**'
+    - '!node_modules/mongodb-memory-server/**'
+    - '!node_modules/mongodb-memory-server-core/**'
+    - '!node_modules/.cache/**'
+    - '!node_modules/typescript/**'
+    - '!node_modules/tsx/**'
+    - '!node_modules/nodemon/**'
+    - '!node_modules/@types/**'
