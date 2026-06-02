@@ -107,7 +107,7 @@ export const getPlayer = async (req: Request, res: Response) => {
 
     // Calculate score statistics
     const scores = await Score.find({ playerAddress: lowerAddress, isValid: true });
-    const highestScore = scores.length > 0 ? Math.max(...scores.map((s) => s.score)) : 0;
+    const highestScore = scores.reduce((sum, s) => sum + s.score, 0);
     const totalGames = scores.length;
 
     return res.status(200).json({
@@ -119,6 +119,27 @@ export const getPlayer = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching player profile:', error);
+    return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+  }
+};
+
+/**
+ * Checks if a player exists by their wallet address.
+ * Public endpoint (does not require JWT).
+ */
+export const checkPlayerExists = async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    if (!address) {
+      return res.status(400).json({ error: 'ADDRESS_REQUIRED' });
+    }
+
+    const lowerAddress = address.toLowerCase();
+    const player = await Player.findOne({ address: lowerAddress });
+
+    return res.status(200).json({ exists: !!player });
+  } catch (error: any) {
+    console.error('Error checking player existence:', error);
     return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
   }
 };
