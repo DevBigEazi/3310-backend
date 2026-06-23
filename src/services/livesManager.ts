@@ -43,6 +43,8 @@ export class LivesManager {
     if (session.currentLives < 5 && session.nextRefillAt && new Date() >= session.nextRefillAt) {
       session.currentLives = 5;
       session.nextRefillAt = null;
+      session.gamesPlayedInCurrentHour = 0;
+      session.firstGameInHour = null;
       await session.save();
     }
     
@@ -60,8 +62,8 @@ export class LivesManager {
     }
 
     session.currentLives -= 1;
-    // Start countdown if dropping from max capacity
-    if (session.currentLives === 4) {
+    // Start countdown when user lost the last live (drops to 0)
+    if (session.currentLives === 0) {
       session.nextRefillAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour wait
     }
     

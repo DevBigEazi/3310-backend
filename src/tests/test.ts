@@ -4,6 +4,7 @@ import cors from 'cors';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import playerRoutes from '../routes/playerRoutes.js';
 import scoreRoutes from '../routes/scoreRoutes.js';
+import jwt from 'jsonwebtoken';
 import { Player } from '../models/Player.js';
 import { Score } from '../models/Score.js';
 import { GameSession } from '../models/GameSession.js';
@@ -162,6 +163,10 @@ async function runTests() {
     if (submitValidData.currentLives !== 4) {
       throw new Error(`Lives should be 4, got ${submitValidData.currentLives}`);
     }
+    if (submitValidData.nextRefillAt !== null) {
+      throw new Error(`nextRefillAt should be null at 4 lives, got ${submitValidData.nextRefillAt}`);
+    }
+    console.log('Verified nextRefillAt is null when lives are above 0.');
     if (submitValidData.weeklyAccumulatedScore !== 40) {
       throw new Error(`Weekly score should be 40, got ${submitValidData.weeklyAccumulatedScore}`);
     }
@@ -255,6 +260,21 @@ async function runTests() {
       });
       const submitIData = await resSubmitI.json();
       console.log(`Game ${i + 3} submitted. Lives remaining: ${submitIData.currentLives}, games played in hour: ${submitIData.gamesPlayedInCurrentHour}`);
+      
+      // On the 5th game (i === 2), lives drop to 0. Verify nextRefillAt is set.
+      if (i === 2) {
+        if (submitIData.currentLives !== 0) {
+          throw new Error(`Lives should be 0 on 5th game, got ${submitIData.currentLives}`);
+        }
+        if (!submitIData.nextRefillAt) {
+          throw new Error(`nextRefillAt should be set when lives drop to 0`);
+        }
+        console.log('Verified nextRefillAt is successfully set when lives drop to 0.');
+      } else {
+        if (submitIData.nextRefillAt !== null) {
+          throw new Error(`nextRefillAt should be null when lives are above 0, got ${submitIData.nextRefillAt}`);
+        }
+      }
     }
 
     // To test the hourly limit, we need to bypass the out-of-lives check.
@@ -378,6 +398,235 @@ async function runTests() {
       throw new Error(`Alice profile highestScore should be 46 (cumulative), got ${aliceProfileData2.stats.highestScore}`);
     }
     console.log('Verified Profile stats uses cumulative score.');
+
+    // 14. Test Flow 12: Weekly Rank Badges Resolution and Rules
+    console.log('\n[Test 12] Testing weekly leaderboard resolution and rank badges...');
+    
+    // Clear collections first to have clean rankings
+    await Player.deleteMany({});
+    await Score.deleteMany({});
+    
+    // Re-create Alice so we still have a valid token/session
+    const alice = new Player({
+      address: '0xAliceSmartAccountAddress0000000000001'.toLowerCase(),
+      username: 'alice_snake',
+      referralCode: 'ALICE1',
+      referralPoints: 10
+    });
+    await alice.save();
+
+    // Create 10 players (player_1 to player_10)
+    const testPlayers = [];
+    for (let i = 1; i <= 10; i++) {
+      const p = new Player({
+        address: `0xPlayerAddress000000000000000000000${i}`.toLowerCase(),
+        username: `player_${i}`,
+        referralCode: `REFCODE${i}`,
+        referralPoints: 0
+      });
+      await p.save();
+      testPlayers.push(p);
+
+      // Create a valid score for week 1
+      const scoreVal = (11 - i) * 10; // player_1 score=100, player_2 score=90, etc.
+      const s = new Score({
+        playerAddress: p.address,
+        score: scoreVal,
+        dayId: '2026-06-01',
+        weekId: 1,
+        isValid: true
+      });
+      await s.save();
+    }
+
+    // First, assert that a non-admin (Alice) gets rejected with 403 Forbidden
+    console.log('Verifying resolve endpoint rejects non-admin users...');
+    const resResolveForbidden = await fetch(`${BASE_URL}/api/scores/leaderboard/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${aliceToken}`
+      },
+      body: JSON.stringify({ weekId: 1 })
+    });
+    const forbiddenData = await resResolveForbidden.json();
+    if (resResolveForbidden.status !== 403 || forbiddenData.error !== 'FORBIDDEN') {
+      throw new Error(`Expected 403 FORBIDDEN for non-admin resolve request, got status ${resResolveForbidden.status}: ${JSON.stringify(forbiddenData)}`);
+    }
+    console.log('Verified non-admin resolve request is blocked with 403 FORBIDDEN.');
+
+    // Sign an admin token
+    const adminToken = jwt.sign(
+      { address: '0xAdminSmartAccountAddress0000000000001', role: 'admin' },
+      process.env.JWT_SECRET || 'fallback-secret',
+      { expiresIn: '30d' }
+    );
+
+    // Call the resolve endpoint for week 1
+    const resResolveWeek1 = await fetch(`${BASE_URL}/api/scores/leaderboard/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
+      body: JSON.stringify({ weekId: 1 })
+    });
+    const resolveWeek1Data = await resResolveWeek1.json();
+    if (resResolveWeek1.status !== 200 || !resolveWeek1Data.success) {
+      throw new Error(`Failed to resolve week 1 leaderboard: ${JSON.stringify(resolveWeek1Data)}`);
+    }
+    console.log('Leaderboard resolution API for week 1 completed successfully with admin credentials.');
+
+    // Call the resolve endpoint for week 1 again to test idempotency/duplicate checks
+    console.log('Running week 1 resolution again to verify duplicate badge prevention...');
+    const resResolveWeek1Dup = await fetch(`${BASE_URL}/api/scores/leaderboard/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
+      body: JSON.stringify({ weekId: 1 })
+    });
+    const resolveWeek1DupData = await resResolveWeek1Dup.json();
+    if (resResolveWeek1Dup.status !== 200 || !resolveWeek1DupData.success) {
+      throw new Error(`Failed to run duplicate week 1 leaderboard resolution: ${JSON.stringify(resolveWeek1DupData)}`);
+    }
+    console.log('Second leaderboard resolution API call for week 1 completed successfully.');
+
+    // Fetch and check badges for player_1 to player_10
+    for (let i = 1; i <= 10; i++) {
+      const pAddress = `0xPlayerAddress000000000000000000000${i}`.toLowerCase();
+      const resProfile = await fetch(`${BASE_URL}/api/player/${pAddress}`, {
+        headers: { 'Authorization': `Bearer ${aliceToken}` }
+      });
+      const profileData = await resProfile.json();
+      const badges = profileData.player.badges || [];
+      const badgeTypes = badges.map((b: any) => b.badgeType);
+
+      console.log(`Checking badges for player_${i} (Rank ${i}):`, badgeTypes);
+
+      if (i === 1) {
+        const countFirst = badges.filter((b: any) => b.badgeType === 'FIRST_PLACE').length;
+        const countTop5 = badges.filter((b: any) => b.badgeType === 'TOP_5').length;
+        const countTop10 = badges.filter((b: any) => b.badgeType === 'TOP_10').length;
+        if (countFirst !== 1 || countTop5 !== 1 || countTop10 !== 1) {
+          throw new Error(`player_1 (Rank 1) badge counts incorrect. Expected exactly 1 of each. Got: FIRST_PLACE=${countFirst}, TOP_5=${countTop5}, TOP_10=${countTop10}`);
+        }
+      } else if (i === 2) {
+        const countSecond = badges.filter((b: any) => b.badgeType === 'SECOND_PLACE').length;
+        const countTop5 = badges.filter((b: any) => b.badgeType === 'TOP_5').length;
+        const countTop10 = badges.filter((b: any) => b.badgeType === 'TOP_10').length;
+        if (countSecond !== 1 || countTop5 !== 1 || countTop10 !== 1) {
+          throw new Error(`player_2 (Rank 2) badge counts incorrect. Expected exactly 1 of each. Got: SECOND_PLACE=${countSecond}, TOP_5=${countTop5}, TOP_10=${countTop10}`);
+        }
+      } else if (i === 3) {
+        const countThird = badges.filter((b: any) => b.badgeType === 'THIRD_PLACE').length;
+        const countTop5 = badges.filter((b: any) => b.badgeType === 'TOP_5').length;
+        const countTop10 = badges.filter((b: any) => b.badgeType === 'TOP_10').length;
+        if (countThird !== 1 || countTop5 !== 1 || countTop10 !== 1) {
+          throw new Error(`player_3 (Rank 3) badge counts incorrect. Expected exactly 1 of each. Got: THIRD_PLACE=${countThird}, TOP_5=${countTop5}, TOP_10=${countTop10}`);
+        }
+      } else if (i === 4 || i === 5) {
+        if (badgeTypes.includes('FIRST_PLACE') || badgeTypes.includes('SECOND_PLACE') || badgeTypes.includes('THIRD_PLACE')) {
+          throw new Error(`player_${i} should not have place badges. Got: ${JSON.stringify(badgeTypes)}`);
+        }
+        if (!badgeTypes.includes('TOP_5') || !badgeTypes.includes('TOP_10')) {
+          throw new Error(`player_${i} (Rank ${i}) missing top5/top10. Got: ${JSON.stringify(badgeTypes)}`);
+        }
+      } else if (i >= 6 && i <= 10) {
+        if (badgeTypes.includes('FIRST_PLACE') || badgeTypes.includes('SECOND_PLACE') || badgeTypes.includes('THIRD_PLACE') || badgeTypes.includes('TOP_5')) {
+          throw new Error(`player_${i} should not have top place/top5 badges. Got: ${JSON.stringify(badgeTypes)}`);
+        }
+        if (!badgeTypes.includes('TOP_10')) {
+          throw new Error(`player_${i} (Rank ${i}) missing top10. Got: ${JSON.stringify(badgeTypes)}`);
+        }
+      }
+    }
+    console.log('Verified week 1 badge assignment matches ranks successfully.');
+
+    // Now test repeatability and one-time constraints in week 2
+    console.log('Testing week 2 badge resolution (repeatable place badges vs one-time badges)...');
+    
+    // Add scores for week 2:
+    // player_1 (address 1) scores 100 -> Rank 1
+    // player_2 (address 2) scores 90 -> Rank 2
+    const s2_1 = new Score({
+      playerAddress: `0xPlayerAddress0000000000000000000001`.toLowerCase(),
+      score: 100,
+      dayId: '2026-06-08',
+      weekId: 2,
+      isValid: true
+    });
+    await s2_1.save();
+
+    const s2_2 = new Score({
+      playerAddress: `0xPlayerAddress0000000000000000000002`.toLowerCase(),
+      score: 90,
+      dayId: '2026-06-08',
+      weekId: 2,
+      isValid: true
+    });
+    await s2_2.save();
+
+    // Call the resolve endpoint for week 2
+    const resResolveWeek2 = await fetch(`${BASE_URL}/api/scores/leaderboard/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
+      body: JSON.stringify({ weekId: 2 })
+    });
+    const resolveWeek2Data = await resResolveWeek2.json();
+    if (resResolveWeek2.status !== 200 || !resolveWeek2Data.success) {
+      throw new Error(`Failed to resolve week 2 leaderboard: ${JSON.stringify(resolveWeek2Data)}`);
+    }
+
+    // Verify player_1 badges: should have 2 FIRST_PLACE, 1 TOP_5, 1 TOP_10
+    const resProfile1 = await fetch(`${BASE_URL}/api/player/0xPlayerAddress0000000000000000000001`.toLowerCase(), {
+      headers: { 'Authorization': `Bearer ${aliceToken}` }
+    });
+    const profile1Data = await resProfile1.json();
+    const badges1 = profile1Data.player.badges || [];
+    const countFirstPlace1 = badges1.filter((b: any) => b.badgeType === 'FIRST_PLACE').length;
+    const countTop5_1 = badges1.filter((b: any) => b.badgeType === 'TOP_5').length;
+    const countTop10_1 = badges1.filter((b: any) => b.badgeType === 'TOP_10').length;
+
+    console.log('Player 1 final badge counts:', { countFirstPlace1, countTop5_1, countTop10_1 });
+
+    if (countFirstPlace1 !== 2) {
+      throw new Error(`player_1 should have 2 FIRST_PLACE badges, got ${countFirstPlace1}`);
+    }
+    if (countTop5_1 !== 1) {
+      throw new Error(`player_1 should have exactly 1 TOP_5 badge, got ${countTop5_1}`);
+    }
+    if (countTop10_1 !== 1) {
+      throw new Error(`player_1 should have exactly 1 TOP_10 badge, got ${countTop10_1}`);
+    }
+
+    // Verify player_2 badges: should have 2 SECOND_PLACE, 1 TOP_5, 1 TOP_10
+    const resProfile2 = await fetch(`${BASE_URL}/api/player/0xPlayerAddress0000000000000000000002`.toLowerCase(), {
+      headers: { 'Authorization': `Bearer ${aliceToken}` }
+    });
+    const profile2Data = await resProfile2.json();
+    const badges2 = profile2Data.player.badges || [];
+    const countSecondPlace2 = badges2.filter((b: any) => b.badgeType === 'SECOND_PLACE').length;
+    const countTop5_2 = badges2.filter((b: any) => b.badgeType === 'TOP_5').length;
+    const countTop10_2 = badges2.filter((b: any) => b.badgeType === 'TOP_10').length;
+
+    console.log('Player 2 final badge counts:', { countSecondPlace2, countTop5_2, countTop10_2 });
+
+    if (countSecondPlace2 !== 2) {
+      throw new Error(`player_2 should have 2 SECOND_PLACE badges, got ${countSecondPlace2}`);
+    }
+    if (countTop5_2 !== 1) {
+      throw new Error(`player_2 should have exactly 1 TOP_5 badge, got ${countTop5_2}`);
+    }
+    if (countTop10_2 !== 1) {
+      throw new Error(`player_2 should have exactly 1 TOP_10 badge, got ${countTop10_2}`);
+    }
+
+    console.log('Verified repeatability and one-time constraints successfully!');
 
     console.log('\n--- ALL TESTS PASSED SUCCESSFULLY! ---');
   } catch (err: any) {

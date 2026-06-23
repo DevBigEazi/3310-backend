@@ -40,6 +40,10 @@ Stores core profiles and referral relationships. Addresses and referral codes ar
 - `referredBy` (String, Lowercase, Nullable): Address of the user who referred this player.
 - `referralPoints` (Number): Referral points used as secondary tiebreakers.
 - `referralCount` (Number): Number of successful referrals.
+- `badges` (Array of subdocuments, Required): List of earned weekly rank badges. Each subdocument contains:
+  * `badgeType` (String, Enum: `'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10'`)
+  * `earnedAt` (Date)
+  * `weekId` (Number)
 - `isSubscribed` (Boolean, Default: false): Phase 2 backward compatibility.
 - `subscriptionExpiresAt` (Date, Nullable): Phase 2 subscription countdown.
 - `lifetimeEarnings` (Number): Phase 2 rewards tally.
@@ -84,7 +88,7 @@ Coordinates active game sessions to enable anti-cheat validation. Configured wit
 ### 3.1 Lives & Refill Engine (src/services/livesManager.ts)
 
 - **Capacity & Consumption**: Each game start validates that lives are `> 0` and decrements `currentLives` by 1.
-- **Countdown Refill**: When lives drop from 5 to 4, `nextRefillAt` is populated with `Date.now() + 1 hour`. Once that timestamp is crossed, calling `checkAndApplyRefill()` restores lives to 5 and resets `nextRefillAt` to null.
+- **Countdown Refill**: When the user loses their last live (lives drop to 0), `nextRefillAt` is populated with `Date.now() + 1 hour`. Once that timestamp is crossed, calling `checkAndApplyRefill()` restores lives to 5, resets `nextRefillAt` to null, resets `gamesPlayedInCurrentHour` to 0, and resets `firstGameInHour` to null. If lives are above 0, no countdown timer is active.
 - **Daily Transition Carryover**: When a player starts their first game on a new day, `checkAndApplyRefill()` constructs a new `GameSession` document but carries over active parameters (current lives, refill timer, and current week's accumulated scores) from the previous day's document, while resetting the daily score tally to 0.
 
 ### 3.2 Time Boundary Mechanics (src/utils/timeUtils.ts)
@@ -100,7 +104,18 @@ Calculates time boundaries strictly in UTC:
 2.  **Submit Request**: The client requests `/api/scores/validate-score`.
 3.  **Replay Protection**: The server looks up the attempt. If `isSubmitted` is already true, it immediately rejects the request.
 4.  **Duration Verification**: The server calculates the elapsed time: `elapsed = (now - startTime) / 1000`. It enforces a strict rate limit: `score / elapsed <= 50` points per second.
-5.  **Score Logging**: The score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases, a life is consumed and the hourly limit counter increments.
+5.  **Score Logging**: The score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases, a life is consumed and the hourly limit counter increments. If the remaining lives drop to 0, the hourly play limit reset window (`firstGameInHour`) and lives refill countdown (`nextRefillAt`) begin immediately.
+
+### 3.4 Weekly Leaderboard Resolution & Badge Awarding Engine (src/services/badgeManager.ts)
+
+At the end of each week (Saturday 23:59:59 UTC), a weekly resolution script executes (or is manually triggered via API) to assign rank badges to the top 10 standings.
+- **Ranks and Badges**:
+  - Rank 1: `FIRST_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
+  - Rank 2: `SECOND_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
+  - Rank 3: `THIRD_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
+  - Ranks 4-5: `TOP_5` (one-time), `TOP_10` (one-time).
+  - Ranks 6-10: `TOP_10` (one-time).
+- **Constraints**: Place badges can be earned multiple times (new badge object appended to the player's array). Tier badges (`TOP_5` and `TOP_10`) can only be earned once.
 
 ---
 
@@ -126,7 +141,7 @@ Checks if a player exists by their wallet address. This is a public endpoint and
 
 #### `GET /api/player/:address`
 
-Returns core profile metadata and historical stats (cumulative total score, total games played).
+Returns core profile metadata (including the `badges` array) and historical stats (cumulative total score, total games played).
 
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Status Codes**: `200 OK`, `404 Not Found`.
@@ -172,6 +187,14 @@ Fetches top 100 players sorted by their cumulative total score.
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Status Codes**: `200 OK`.
 
+#### `POST /api/scores/leaderboard/resolve`
+
+Triggers weekly leaderboard resolution and awards rank badges.
+
+- **Headers**: `Authorization: Bearer <JWT>`
+- **Payload**: `{ weekId?: number }` (optional, defaults to current active week)
+- **Status Codes**: `200 OK` (successfully resolved), `400 Bad Request` (invalid week ID), `500 Internal Server Error`.
+
 ---
 
 ## 5. Middleware Details (src/middleware/auth.ts)
@@ -202,6 +225,7 @@ The backend contains a self-contained integration test suite that spins up a moc
 7.  Hourly rate limits (rejecting the 6th game attempt in an hour).
 8.  Tiebreaker-sorted Weekly Leaderboard aggregations.
 9.  All-Time Leaderboard and Profile cumulative score verification.
+10. Weekly rank badges resolution validation (Test 12), asserting badge assignment by rank, nested badge rules, place-badge repeatability, and tier-badge one-time constraints.
 
 Run the test suite locally with:
 

@@ -15,6 +15,10 @@ functions:
     handler: dist/index.handler
     events:
       - httpApi: '*'
+  resolveWeekly:
+    handler: dist/index.resolveWeeklyHandler
+    events:
+      - schedule: cron(0 0 ? * MON *)
 
 package:
   patterns:
