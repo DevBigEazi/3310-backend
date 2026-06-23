@@ -151,8 +151,14 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     attempt.isSubmitted = true;
     await attempt.save();
 
-    // Consume 1 life
-    const session = await LivesManager.consumeLife(playerAddress);
+    // Consume 1 life unless the player snake did not eat any food (score === 0)
+    const isRestartNoLoss = (score === 0);
+    let session;
+    if (isRestartNoLoss) {
+      session = await LivesManager.checkAndApplyRefill(playerAddress);
+    } else {
+      session = await LivesManager.consumeLife(playerAddress);
+    }
 
     // Anti-Cheat: Time elapsed verification
     const now = new Date();
@@ -176,21 +182,23 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     });
     await scoreDoc.save();
 
-    // Update hourly limit counters (since a game was played and a life consumed)
-    checkAndResetHourlyLimit(session);
-    
-    session.gamesPlayedInCurrentHour += 1;
-    if (session.currentLives === 0 && !session.firstGameInHour) {
-      session.firstGameInHour = now;
-    }
+    if (!isRestartNoLoss) {
+      // Update hourly limit counters (since a game was played and a life consumed)
+      checkAndResetHourlyLimit(session);
+      
+      session.gamesPlayedInCurrentHour += 1;
+      if (session.currentLives === 0 && !session.firstGameInHour) {
+        session.firstGameInHour = now;
+      }
 
-    // Only increment accumulated scores if the attempt is valid (anti-cheat passed)
-    if (isValid) {
-      session.dailyAccumulatedScore += score;
-      session.weeklyAccumulatedScore += score;
+      // Only increment accumulated scores if the attempt is valid (anti-cheat passed)
+      if (isValid) {
+        session.dailyAccumulatedScore += score;
+        session.weeklyAccumulatedScore += score;
+      }
+      
+      await session.save();
     }
-    
-    await session.save();
 
     return res.status(200).json({
       isValid,

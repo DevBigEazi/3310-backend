@@ -41,7 +41,7 @@ Stores core profiles and referral relationships. Addresses and referral codes ar
 - `referralPoints` (Number): Referral points used as secondary tiebreakers.
 - `referralCount` (Number): Number of successful referrals.
 - `badges` (Array of subdocuments, Required): List of earned weekly rank badges. Each subdocument contains:
-  * `badgeType` (String, Enum: `'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10'`)
+  * `badgeType` (String, Enum: `'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10' | 'GOAT'`)
   * `earnedAt` (Date)
   * `weekId` (Number)
 - `isSubscribed` (Boolean, Default: false): Phase 2 backward compatibility.
@@ -108,14 +108,18 @@ Calculates time boundaries strictly in UTC:
 
 ### 3.4 Weekly Leaderboard Resolution & Badge Awarding Engine (src/services/badgeManager.ts)
 
-At the end of each week (Saturday 23:59:59 UTC), a weekly resolution script executes (or is manually triggered via API) to assign rank badges to the top 10 standings.
+At the end of each week (Saturday 23:59:59 UTC), a weekly resolution script executes (or is manually triggered via API) to assign rank badges to the top 10 standings and update the transferable G.O.A.T. badge.
 - **Ranks and Badges**:
+  - **G.O.A.T. Badge** (`GOAT`): Awarded dynamically to the player with the most accumulated Weekly Champion (`FIRST_PLACE`) badges overall. The badge is unique (only one player holds it at any time) and transferable.
   - Rank 1: `FIRST_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Rank 2: `SECOND_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Rank 3: `THIRD_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Ranks 4-5: `TOP_5` (one-time), `TOP_10` (one-time).
   - Ranks 6-10: `TOP_10` (one-time).
-- **Constraints**: Place badges can be earned multiple times (new badge object appended to the player's array). Tier badges (`TOP_5` and `TOP_10`) can only be earned once.
+- **Constraints & Transfer Logic**:
+  - Place badges (`FIRST_PLACE`, `SECOND_PLACE`, `THIRD_PLACE`) can be earned multiple times (appended to the player's badges array).
+  - Tier badges (`TOP_5`, `TOP_10`) can only be earned once.
+  - G.O.A.T. badge is automatically pulled (`$pull` from badges array) from the previous holder and pushed (`$push`) to the new leader if they are overtaken in championship count. Ties are broken in favor of the existing holder, or using the highest single valid score.
 
 ---
 

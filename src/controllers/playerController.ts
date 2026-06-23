@@ -35,6 +35,15 @@ export const createPlayer = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'USERNAME_TAKEN' });
     }
 
+    // Check if the email is already registered by another player
+    if (email) {
+      const lowerEmail = email.toLowerCase();
+      const existingEmail = await Player.findOne({ email: lowerEmail });
+      if (existingEmail) {
+        return res.status(400).json({ error: 'EMAIL_TAKEN' });
+      }
+    }
+
     // Generate unique 6-character uppercase alphanumeric referral code
     let referralCode = '';
     let isUnique = false;

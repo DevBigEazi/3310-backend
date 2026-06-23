@@ -1,7 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface IBadge {
-  badgeType: 'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10';
+  badgeType: 'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10' | 'GOAT';
   earnedAt: Date;
   weekId: number;
 }
@@ -25,14 +25,14 @@ export interface IPlayer extends Document {
 const PlayerSchema = new Schema<IPlayer>({
   address: { type: String, required: true, unique: true, lowercase: true, index: true },
   username: { type: String, required: true, unique: true },
-  email: { type: String, lowercase: true },
+  email: { type: String, lowercase: true, unique: true, sparse: true },
   createdAt: { type: Date, default: Date.now },
   referralCode: { type: String, required: true, unique: true, index: true },
   referredBy: { type: String, default: null, lowercase: true },
   referralPoints: { type: Number, default: 0 },
   referralCount: { type: Number, default: 0, min: 0 },
   badges: [{
-    badgeType: { type: String, enum: ['FIRST_PLACE', 'SECOND_PLACE', 'THIRD_PLACE', 'TOP_5', 'TOP_10'], required: true },
+    badgeType: { type: String, enum: ['FIRST_PLACE', 'SECOND_PLACE', 'THIRD_PLACE', 'TOP_5', 'TOP_10', 'GOAT'], required: true },
     earnedAt: { type: Date, default: Date.now },
     weekId: { type: Number, required: true }
   }],
