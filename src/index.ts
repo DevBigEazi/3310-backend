@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import serverless from 'serverless-http';
 import playerRoutes from './routes/playerRoutes.js';
 import scoreRoutes from './routes/scoreRoutes.js';
+import { getWeekId } from './utils/timeUtils.js';
+import { BadgeManager } from './services/badgeManager.js';
 
 dotenv.config();
 
@@ -24,6 +26,34 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+function scheduleNextResolution() {
+  const now = new Date();
+  const nextMonday = new Date();
+  nextMonday.setUTCHours(0, 0, 0, 0);
+  const day = nextMonday.getUTCDay();
+  const daysToAdd = (8 - day) % 7 || 7;
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + daysToAdd);
+
+  let msToNextMonday = nextMonday.getTime() - now.getTime();
+  if (msToNextMonday <= 0) {
+    msToNextMonday += 7 * 24 * 60 * 60 * 1000;
+  }
+  
+  console.log(`Local resolution scheduled for next Monday ${nextMonday.toISOString()} (in ${Math.round(msToNextMonday / 1000 / 60)} minutes)`);
+  
+  setTimeout(async () => {
+    try {
+      const weekId = getWeekId() - 1;
+      console.log(`[Local Scheduler] Resolving weekly leaderboard for week ${weekId}...`);
+      await BadgeManager.resolveWeeklyRanksAndAwardBadges(weekId);
+      console.log(`[Local Scheduler] Weekly leaderboard resolved for week ${weekId}.`);
+    } catch (error) {
+      console.error(`[Local Scheduler] Error resolving week:`, error);
+    }
+    scheduleNextResolution();
+  }, msToNextMonday);
+}
+
 // Database and Server startup for local development
 if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
   mongoose
@@ -33,6 +63,8 @@ if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
       app.listen(PORT, () => {
         console.log(`Backend server is running on port ${PORT}`);
       });
+      // Start local scheduler
+      scheduleNextResolution();
     })
     .catch((error) => {
       console.error('Database connection error:', error);
@@ -59,5 +91,30 @@ export const handler = async (event: any, context: any) => {
   }
 
   return serverlessHandler(event, context);
+};
+
+// Scheduled Weekly Leaderboard Resolution for AWS Lambda
+export const resolveWeeklyHandler = async (event: any, context: any) => {
+  context.callbackWaitsForEmptyEventLoop = false;
+
+  if (mongoose.connection.readyState === 0) {
+    try {
+      await mongoose.connect(MONGODB_URI);
+      console.log('Successfully connected to MongoDB for weekly resolution.');
+    } catch (error) {
+      console.error('Database connection error during weekly resolution:', error);
+      throw error;
+    }
+  }
+
+  const weekId = getWeekId() - 1;
+  console.log(`Scheduled weekly resolution started for weekId: ${weekId}`);
+  try {
+    await BadgeManager.resolveWeeklyRanksAndAwardBadges(weekId);
+    console.log(`Scheduled weekly resolution finished successfully for weekId: ${weekId}`);
+  } catch (error) {
+    console.error(`Scheduled weekly resolution failed for weekId: ${weekId}`, error);
+    throw error;
+  }
 };
 

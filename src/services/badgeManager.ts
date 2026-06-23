@@ -65,9 +65,11 @@ export class BadgeManager {
       let hasUpdated = false;
       for (const bType of badgesToAward) {
         const isOneTime = bType === 'TOP_5' || bType === 'TOP_10';
-        const alreadyHas = playerDoc.badges.some(b => b.badgeType === bType);
+        const alreadyHas = isOneTime
+          ? playerDoc.badges.some(b => b.badgeType === bType)
+          : playerDoc.badges.some(b => b.badgeType === bType && b.weekId === weekId);
 
-        if (!isOneTime || !alreadyHas) {
+        if (!alreadyHas) {
           playerDoc.badges.push({
             badgeType: bType,
             earnedAt: new Date(),

@@ -7,6 +7,7 @@ dotenv.config();
 export interface AuthRequest extends Request {
   user?: {
     address: string;
+    role?: string;
   };
 }
 
@@ -20,13 +21,16 @@ export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunct
   const token = authHeader.split(' ')[1];
   
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as { address: string };
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as { address: string; role?: string };
     
     if (!payload.address) {
       return res.status(401).json({ error: 'INVALID_TOKEN' });
     }
     
-    req.user = { address: payload.address.toLowerCase() };
+    req.user = { 
+      address: payload.address.toLowerCase(),
+      role: payload.role
+    };
     next();
   } catch (err) {
     return res.status(403).json({ error: 'INVALID_TOKEN' });

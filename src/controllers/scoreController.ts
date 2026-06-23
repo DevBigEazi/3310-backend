@@ -316,6 +316,10 @@ export const getAllTimeLeaderboard = async (req: AuthRequest, res: Response) => 
  * Triggers weekly leaderboard resolution and awards badges.
  */
 export const resolveWeeklyLeaderboard = async (req: AuthRequest, res: Response): Promise<Response> => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'FORBIDDEN', message: 'Admin role is required to resolve weekly leaderboard.' });
+  }
+
   try {
     const weekId = req.body.weekId !== undefined ? parseInt(req.body.weekId as string) : getWeekId();
     
