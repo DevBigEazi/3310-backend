@@ -242,7 +242,8 @@ export const getWeeklyLeaderboard = async (req: AuthRequest, res: Response) => {
           username: '$playerInfo.username',
           weeklyScore: 1,
           gamesCount: 1,
-          referralPoints: '$playerInfo.referralPoints'
+          referralPoints: '$playerInfo.referralPoints',
+          badges: '$playerInfo.badges'
         }
       },
       {
@@ -291,7 +292,8 @@ export const getAllTimeLeaderboard = async (req: AuthRequest, res: Response) => 
           username: '$playerInfo.username',
           highScore: 1,
           totalGames: 1,
-          referralPoints: '$playerInfo.referralPoints'
+          referralPoints: '$playerInfo.referralPoints',
+          badges: '$playerInfo.badges'
         }
       },
       {
