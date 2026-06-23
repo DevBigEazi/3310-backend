@@ -1,5 +1,11 @@
 import { Schema, model, Document } from 'mongoose';
 
+export interface IBadge {
+  badgeType: 'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10';
+  earnedAt: Date;
+  weekId: number;
+}
+
 export interface IPlayer extends Document {
   address: string;             // Lowercased EIP-7702 delegated wallet address
   username: string;
@@ -9,6 +15,7 @@ export interface IPlayer extends Document {
   referredBy: string | null;
   referralPoints: number;
   referralCount: number;
+  badges: IBadge[];
   // Phase 2 backward compatibility placeholders
   isSubscribed: boolean;
   subscriptionExpiresAt: Date | null;
@@ -24,6 +31,11 @@ const PlayerSchema = new Schema<IPlayer>({
   referredBy: { type: String, default: null, lowercase: true },
   referralPoints: { type: Number, default: 0 },
   referralCount: { type: Number, default: 0, min: 0 },
+  badges: [{
+    badgeType: { type: String, enum: ['FIRST_PLACE', 'SECOND_PLACE', 'THIRD_PLACE', 'TOP_5', 'TOP_10'], required: true },
+    earnedAt: { type: Date, default: Date.now },
+    weekId: { type: Number, required: true }
+  }],
   isSubscribed: { type: Boolean, default: false },
   subscriptionExpiresAt: { type: Date, default: null },
   lifetimeEarnings: { type: Number, default: 0 }

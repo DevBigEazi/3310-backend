@@ -4,7 +4,8 @@ import {
   startGame, 
   validateScore, 
   getWeeklyLeaderboard, 
-  getAllTimeLeaderboard 
+  getAllTimeLeaderboard,
+  resolveWeeklyLeaderboard
 } from '../controllers/scoreController.js';
 import { authenticateJWT } from '../middleware/auth.js';
 
@@ -24,5 +25,8 @@ router.get('/leaderboard/weekly', authenticateJWT, getWeeklyLeaderboard);
 
 // Fetch all-time leaderboard
 router.get('/leaderboard/all-time', authenticateJWT, getAllTimeLeaderboard);
+
+// Trigger weekly leaderboard resolution and badge awarding
+router.post('/leaderboard/resolve', authenticateJWT, resolveWeeklyLeaderboard);
 
 export default router;

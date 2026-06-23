@@ -6,6 +6,7 @@ import { GameAttempt } from '../models/GameAttempt.js';
 import { LivesManager } from '../services/livesManager.js';
 import { getDayId, getWeekId } from '../utils/timeUtils.js';
 import { AuthRequest } from '../middleware/auth.js';
+import { BadgeManager } from '../services/badgeManager.js';
 
 /**
  * Resets the hourly game play limit if more than 1 hour has elapsed since firstGameInHour.
@@ -178,10 +179,10 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     // Update hourly limit counters (since a game was played and a life consumed)
     checkAndResetHourlyLimit(session);
     
-    if (!session.firstGameInHour) {
+    session.gamesPlayedInCurrentHour += 1;
+    if (session.currentLives === 0 && !session.firstGameInHour) {
       session.firstGameInHour = now;
     }
-    session.gamesPlayedInCurrentHour += 1;
 
     // Only increment accumulated scores if the attempt is valid (anti-cheat passed)
     if (isValid) {
@@ -305,6 +306,26 @@ export const getAllTimeLeaderboard = async (req: AuthRequest, res: Response) => 
     return res.status(200).json({ leaderboard });
   } catch (error: any) {
     console.error('Error fetching all-time leaderboard:', error);
+    return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
+  }
+};
+
+/**
+ * Triggers weekly leaderboard resolution and awards badges.
+ */
+export const resolveWeeklyLeaderboard = async (req: AuthRequest, res: Response): Promise<Response> => {
+  try {
+    const weekId = req.body.weekId !== undefined ? parseInt(req.body.weekId as string) : getWeekId();
+    
+    if (isNaN(weekId)) {
+      return res.status(400).json({ error: 'INVALID_WEEK_ID' });
+    }
+
+    await BadgeManager.resolveWeeklyRanksAndAwardBadges(weekId);
+    
+    return res.status(200).json({ success: true, message: `Weekly ranks resolved and badges awarded for week ${weekId}.` });
+  } catch (error: any) {
+    console.error('Error resolving weekly leaderboard:', error);
     return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
   }
 };
