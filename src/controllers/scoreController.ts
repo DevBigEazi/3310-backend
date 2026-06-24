@@ -1,7 +1,6 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Score } from '../models/Score.js';
-import { GameSession } from '../models/GameSession.js';
 import { GameAttempt } from '../models/GameAttempt.js';
 import { LivesManager } from '../services/livesManager.js';
 import { getDayId, getWeekId } from '../utils/timeUtils.js';
@@ -130,8 +129,7 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     if (!playerAddress) {
       return res.status(401).json({ error: 'UNAUTHORIZED' });
     }
-
-    const { gameSessionId, score } = req.body;
+    const { gameSessionId, score, gameMode } = req.body;
     if (!gameSessionId || score === undefined) {
       return res.status(400).json({ error: 'GAME_SESSION_ID_AND_SCORE_REQUIRED' });
     }
@@ -179,7 +177,8 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
         score,
         dayId: currentDay,
         weekId: currentWeek,
-        isValid
+        isValid,
+        gameMode: gameMode || 'classic'
       });
       await scoreDoc.save();
     }

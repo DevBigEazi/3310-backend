@@ -6,6 +6,7 @@ export interface IScore extends Document {
   dayId: string;               // YYYY-MM-DD
   weekId: number;              // Current week number since genesis
   isValid: boolean;
+  gameMode?: 'classic' | 'wrap';
   createdAt: Date;
 }
 
@@ -15,6 +16,7 @@ const ScoreSchema = new Schema<IScore>({
   dayId: { type: String, required: true },
   weekId: { type: Number, required: true, index: true },
   isValid: { type: Boolean, default: true, index: true },
+  gameMode: { type: String, enum: ['classic', 'wrap'], default: 'classic' },
   createdAt: { type: Date, default: Date.now }
 });
 

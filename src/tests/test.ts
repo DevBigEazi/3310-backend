@@ -183,7 +183,8 @@ async function runTests() {
       },
       body: JSON.stringify({
         gameSessionId: gameSessionId1,
-        score: 40
+        score: 40,
+        gameMode: 'wrap'
       })
     });
     const submitValidData = await resSubmitValid.json();
@@ -193,6 +194,16 @@ async function runTests() {
     console.log('Score validated successfully!');
     console.log('Alice updated lives:', submitValidData.currentLives);
     console.log('Alice weekly accumulated score:', submitValidData.weeklyAccumulatedScore);
+    
+    // Verify gameMode was stored in the database
+    const savedScore = await Score.findOne({ playerAddress: '0xalicesmartaccountaddress0000000000001' });
+    if (!savedScore) {
+      throw new Error('Could not find saved score in DB');
+    }
+    if (savedScore.gameMode !== 'wrap') {
+      throw new Error(`Stored score gameMode should be "wrap", got: ${savedScore.gameMode}`);
+    }
+    console.log('Verified gameMode "wrap" successfully stored in database.');
     
     if (submitValidData.currentLives !== 4) {
       throw new Error(`Lives should be 4, got ${submitValidData.currentLives}`);
