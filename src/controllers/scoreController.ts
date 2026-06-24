@@ -173,14 +173,16 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     const currentWeek = getWeekId();
 
     // Save individual game score
-    const scoreDoc = new Score({
-      playerAddress,
-      score,
-      dayId: currentDay,
-      weekId: currentWeek,
-      isValid
-    });
-    await scoreDoc.save();
+    if (!isRestartNoLoss) {
+      const scoreDoc = new Score({
+        playerAddress,
+        score,
+        dayId: currentDay,
+        weekId: currentWeek,
+        isValid
+      });
+      await scoreDoc.save();
+    }
 
     if (!isRestartNoLoss) {
       // Update hourly limit counters (since a game was played and a life consumed)
