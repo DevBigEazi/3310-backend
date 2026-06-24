@@ -5,6 +5,7 @@ export interface IGameAttempt extends Document {
   playerAddress: string;
   startTime: Date;
   isSubmitted: boolean;
+  gameMode?: 'classic' | 'wrap';
   createdAt: Date;
 }
 
@@ -13,6 +14,7 @@ const GameAttemptSchema = new Schema<IGameAttempt>({
   playerAddress: { type: String, required: true, lowercase: true, index: true },
   startTime: { type: Date, required: true, default: Date.now },
   isSubmitted: { type: Boolean, required: true, default: false },
+  gameMode: { type: String, enum: ['classic', 'wrap'], default: 'classic' },
   createdAt: { type: Date, default: Date.now, expires: 86400 * 7 } // TTL index to automatically clean up after 7 days
 });
 

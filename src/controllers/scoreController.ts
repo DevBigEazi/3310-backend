@@ -20,6 +20,10 @@ function checkAndResetHourlyLimit(session: any): boolean {
       session.firstGameInHour = null;
       return true;
     }
+  } else if (session.gamesPlayedInCurrentHour >= 3) {
+    // Self-healing: if games count >= 3 but firstGameInHour is null, start the timer now
+    session.firstGameInHour = new Date();
+    return true;
   }
   return false;
 }
@@ -82,7 +86,10 @@ export const startGame = async (req: AuthRequest, res: Response) => {
       await session.save();
     }
 
-    if (session.gamesPlayedInCurrentHour >= 5) {
+    const { gameMode } = req.body;
+    const limit = gameMode === 'wrap' ? 3 : 5;
+
+    if (session.gamesPlayedInCurrentHour >= limit) {
       return res.status(400).json({ 
         error: 'HOUR_LIMIT_REACHED', 
         firstGameInHour: session.firstGameInHour 
@@ -103,7 +110,8 @@ export const startGame = async (req: AuthRequest, res: Response) => {
       gameSessionId,
       playerAddress,
       startTime: new Date(),
-      isSubmitted: false
+      isSubmitted: false,
+      gameMode: gameMode || 'classic'
     });
     
     await attempt.save();
@@ -188,6 +196,12 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
       checkAndResetHourlyLimit(session);
       
       session.gamesPlayedInCurrentHour += 1;
+      if (session.gamesPlayedInCurrentHour === 3) {
+        session.firstGameInHour = now;
+      } else if (session.gamesPlayedInCurrentHour === 5) {
+        session.firstGameInHour = now;
+      }
+
       if (session.currentLives === 0 && !session.firstGameInHour) {
         session.firstGameInHour = now;
       }

@@ -341,6 +341,24 @@ async function runTests() {
       const submitIData = await resSubmitI.json();
       console.log(`Game ${i + 3} submitted. Lives remaining: ${submitIData.currentLives}, games played in hour: ${submitIData.gamesPlayedInCurrentHour}`);
       
+      // If gamesPlayedInCurrentHour reached 3, try starting a borderless game (limit = 3)
+      if (submitIData.gamesPlayedInCurrentHour === 3) {
+        console.log('Verifying borderless game is blocked when gamesPlayedInCurrentHour is 3...');
+        const resStartWrap = await fetch(`${BASE_URL}/api/scores/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${aliceToken}`
+          },
+          body: JSON.stringify({ gameMode: 'wrap' })
+        });
+        const wrapStartData = await resStartWrap.json();
+        if (resStartWrap.status !== 400 || wrapStartData.error !== 'HOUR_LIMIT_REACHED') {
+          throw new Error(`Starting borderless game should be blocked with HOUR_LIMIT_REACHED when 3 games played, got status: ${resStartWrap.status}, error: ${wrapStartData.error}`);
+        }
+        console.log('Verified starting borderless game is correctly blocked after 3 games!');
+      }
+
       // On the 5th game (i === 2), lives drop to 0. Verify nextRefillAt is set.
       if (i === 2) {
         if (submitIData.currentLives !== 0) {
