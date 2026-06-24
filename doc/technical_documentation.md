@@ -104,7 +104,8 @@ Calculates time boundaries strictly in UTC:
 2.  **Submit Request**: The client requests `/api/scores/validate-score`.
 3.  **Replay Protection**: The server looks up the attempt. If `isSubmitted` is already true, it immediately rejects the request.
 4.  **Duration Verification**: The server calculates the elapsed time: `elapsed = (now - startTime) / 1000`. It enforces a strict rate limit: `score / elapsed <= 50` points per second.
-5.  **Score Logging**: The score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases, a life is consumed and the hourly limit counter increments. If the remaining lives drop to 0, the hourly play limit reset window (`firstGameInHour`) and lives refill countdown (`nextRefillAt`) begin immediately.
+5.  **Score Logging**: If the score is greater than 0, the score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases (valid/invalid), a life is consumed and the hourly limit counter increments. If the remaining lives drop to 0, the hourly play limit reset window (`firstGameInHour`) and lives refill countdown (`nextRefillAt`) begin immediately.
+6.  **Zero-Score Exception**: If the score is 0, the session is completed but no life is consumed, the hourly limit counter is not incremented, and no Score document is saved to the database.
 
 ### 3.4 Weekly Leaderboard Resolution & Badge Awarding Engine (src/services/badgeManager.ts)
 
@@ -170,7 +171,7 @@ Pre-checks session constraints. Generates and returns a UUID `gameSessionId` for
 
 #### `POST /api/scores/validate-score`
 
-Validates duration rate, consumes a life, updates stats, and saves the score.
+Validates duration rate, consumes a life (if score > 0), updates stats (if score > 0), and saves the score (if score > 0). If the score is 0, no life is consumed and the game attempt does not count.
 
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Payload**: `{ gameSessionId: string, score: number }`
