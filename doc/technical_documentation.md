@@ -96,7 +96,7 @@ Coordinates active game sessions to enable anti-cheat validation. Configured wit
 Calculates time boundaries strictly in UTC:
 
 - `getDayId()` parses a date object and outputs `YYYY-MM-DD`.
-- `getWeekId()` computes the 1-indexed week count elapsed since the configurable `GENESIS_DATE` (e.g. `2026-05-25T00:00:00Z` representing a Monday), aligning weeks with standard Monday-to-Sunday cycles.
+- `getWeekId()` computes the 1-indexed week count elapsed since the fixed `GENESIS_DATE` (`2026-05-25T00:00:00Z` representing a Monday), aligning weeks with standard Monday-to-Sunday cycles.
 
 ### 3.3 Anti-Cheat Pipeline
 
@@ -266,7 +266,6 @@ The infrastructure configuration uses Serverless Framework:
 - **Environment Variables**: Dynamically sources application variables:
   * `MONGODB_URI`
   * `JWT_SECRET`
-  * `GENESIS_DATE`
 
 ### 7.5 Deployment Commands
 Before deploying, ensure you are authenticated to your AWS account (via `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) and that these keys are set in your environment along with application variables.

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Score } from '../models/Score.js';
 import { GameAttempt } from '../models/GameAttempt.js';
 import { LivesManager } from '../services/livesManager.js';
-import { getDayId, getWeekId } from '../utils/timeUtils.js';
+import { getDayId, getWeekId, getGenesisTime, getAlignedGenesisTime } from '../utils/timeUtils.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { BadgeManager } from '../services/badgeManager.js';
 
@@ -279,7 +279,12 @@ export const getWeeklyLeaderboard = async (req: AuthRequest, res: Response) => {
       { $limit: 100 } // Limit to top 100 for leaderboard screen
     ]);
 
-    return res.status(200).json({ weekId, leaderboard });
+    const alignedGenesisTime = getAlignedGenesisTime();
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const startTime = new Date(alignedGenesisTime + (weekId - 1) * ONE_WEEK_MS).toISOString();
+    const endTime = new Date(alignedGenesisTime + weekId * ONE_WEEK_MS - 1).toISOString();
+
+    return res.status(200).json({ weekId, startTime, endTime, leaderboard });
   } catch (error: any) {
     console.error('Error fetching weekly leaderboard:', error);
     return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });
