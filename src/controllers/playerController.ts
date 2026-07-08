@@ -24,7 +24,7 @@ export const createPlayer = async (req: Request, res: Response) => {
       const token = jwt.sign(
         { address: player.address },
         process.env.JWT_SECRET || 'fallback-secret',
-        { expiresIn: '30d' }
+        { expiresIn: '3650d' }
       );
       return res.status(200).json({ player, token });
     }
@@ -33,6 +33,15 @@ export const createPlayer = async (req: Request, res: Response) => {
     const existingUsername = await Player.findOne({ username });
     if (existingUsername) {
       return res.status(400).json({ error: 'USERNAME_TAKEN' });
+    }
+
+    // Check if the email is already registered by another player
+    if (email) {
+      const lowerEmail = email.toLowerCase();
+      const existingEmail = await Player.findOne({ email: lowerEmail });
+      if (existingEmail) {
+        return res.status(400).json({ error: 'EMAIL_TAKEN' });
+      }
     }
 
     // Generate unique 6-character uppercase alphanumeric referral code
@@ -78,7 +87,7 @@ export const createPlayer = async (req: Request, res: Response) => {
     const token = jwt.sign(
       { address: player.address },
       process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: '30d' }
+      { expiresIn: '3650d' }
     );
 
     return res.status(201).json({ player, token });

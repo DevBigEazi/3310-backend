@@ -1,10 +1,9 @@
 import { Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { Score } from '../models/Score.js';
-import { GameSession } from '../models/GameSession.js';
 import { GameAttempt } from '../models/GameAttempt.js';
 import { LivesManager } from '../services/livesManager.js';
-import { getDayId, getWeekId } from '../utils/timeUtils.js';
+import { getDayId, getWeekId, getGenesisTime, getAlignedGenesisTime } from '../utils/timeUtils.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { BadgeManager } from '../services/badgeManager.js';
 
@@ -21,6 +20,10 @@ function checkAndResetHourlyLimit(session: any): boolean {
       session.firstGameInHour = null;
       return true;
     }
+  } else if (session.gamesPlayedInCurrentHour >= 3) {
+    // Self-healing: if games count >= 3 but firstGameInHour is null, start the timer now
+    session.firstGameInHour = new Date();
+    return true;
   }
   return false;
 }
@@ -83,7 +86,10 @@ export const startGame = async (req: AuthRequest, res: Response) => {
       await session.save();
     }
 
-    if (session.gamesPlayedInCurrentHour >= 5) {
+    const { gameMode } = req.body;
+    const limit = gameMode === 'wrap' ? 3 : 5;
+
+    if (session.gamesPlayedInCurrentHour >= limit) {
       return res.status(400).json({ 
         error: 'HOUR_LIMIT_REACHED', 
         firstGameInHour: session.firstGameInHour 
@@ -104,7 +110,8 @@ export const startGame = async (req: AuthRequest, res: Response) => {
       gameSessionId,
       playerAddress,
       startTime: new Date(),
-      isSubmitted: false
+      isSubmitted: false,
+      gameMode: gameMode || 'classic'
     });
     
     await attempt.save();
@@ -130,8 +137,7 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     if (!playerAddress) {
       return res.status(401).json({ error: 'UNAUTHORIZED' });
     }
-
-    const { gameSessionId, score } = req.body;
+    const { gameSessionId, score, gameMode } = req.body;
     if (!gameSessionId || score === undefined) {
       return res.status(400).json({ error: 'GAME_SESSION_ID_AND_SCORE_REQUIRED' });
     }
@@ -151,8 +157,14 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     attempt.isSubmitted = true;
     await attempt.save();
 
-    // Consume 1 life
-    const session = await LivesManager.consumeLife(playerAddress);
+    // Consume 1 life unless the player snake did not eat any food (score === 0)
+    const isRestartNoLoss = (score === 0);
+    let session;
+    if (isRestartNoLoss) {
+      session = await LivesManager.checkAndApplyRefill(playerAddress);
+    } else {
+      session = await LivesManager.consumeLife(playerAddress);
+    }
 
     // Anti-Cheat: Time elapsed verification
     const now = new Date();
@@ -167,30 +179,41 @@ export const validateScore = async (req: AuthRequest, res: Response) => {
     const currentWeek = getWeekId();
 
     // Save individual game score
-    const scoreDoc = new Score({
-      playerAddress,
-      score,
-      dayId: currentDay,
-      weekId: currentWeek,
-      isValid
-    });
-    await scoreDoc.save();
-
-    // Update hourly limit counters (since a game was played and a life consumed)
-    checkAndResetHourlyLimit(session);
-    
-    session.gamesPlayedInCurrentHour += 1;
-    if (session.currentLives === 0 && !session.firstGameInHour) {
-      session.firstGameInHour = now;
+    if (!isRestartNoLoss) {
+      const scoreDoc = new Score({
+        playerAddress,
+        score,
+        dayId: currentDay,
+        weekId: currentWeek,
+        isValid,
+        gameMode: gameMode || 'classic'
+      });
+      await scoreDoc.save();
     }
 
-    // Only increment accumulated scores if the attempt is valid (anti-cheat passed)
-    if (isValid) {
-      session.dailyAccumulatedScore += score;
-      session.weeklyAccumulatedScore += score;
+    if (!isRestartNoLoss) {
+      // Update hourly limit counters (since a game was played and a life consumed)
+      checkAndResetHourlyLimit(session);
+      
+      session.gamesPlayedInCurrentHour += 1;
+      if (session.gamesPlayedInCurrentHour === 3) {
+        session.firstGameInHour = now;
+      } else if (session.gamesPlayedInCurrentHour === 5) {
+        session.firstGameInHour = now;
+      }
+
+      if (session.currentLives === 0 && !session.firstGameInHour) {
+        session.firstGameInHour = now;
+      }
+
+      // Only increment accumulated scores if the attempt is valid (anti-cheat passed)
+      if (isValid) {
+        session.dailyAccumulatedScore += score;
+        session.weeklyAccumulatedScore += score;
+      }
+      
+      await session.save();
     }
-    
-    await session.save();
 
     return res.status(200).json({
       isValid,
@@ -256,7 +279,12 @@ export const getWeeklyLeaderboard = async (req: AuthRequest, res: Response) => {
       { $limit: 100 } // Limit to top 100 for leaderboard screen
     ]);
 
-    return res.status(200).json({ weekId, leaderboard });
+    const alignedGenesisTime = getAlignedGenesisTime();
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const startTime = new Date(alignedGenesisTime + (weekId - 1) * ONE_WEEK_MS).toISOString();
+    const endTime = new Date(alignedGenesisTime + weekId * ONE_WEEK_MS - 1).toISOString();
+
+    return res.status(200).json({ weekId, startTime, endTime, leaderboard });
   } catch (error: any) {
     console.error('Error fetching weekly leaderboard:', error);
     return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR', message: error.message });

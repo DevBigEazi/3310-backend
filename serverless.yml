@@ -8,7 +8,6 @@ provider:
   environment:
     MONGODB_URI: ${env:MONGODB_URI}
     JWT_SECRET: ${env:JWT_SECRET}
-    GENESIS_DATE: ${env:GENESIS_DATE}
 
 functions:
   api:

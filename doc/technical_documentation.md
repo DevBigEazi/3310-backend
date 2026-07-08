@@ -41,7 +41,7 @@ Stores core profiles and referral relationships. Addresses and referral codes ar
 - `referralPoints` (Number): Referral points used as secondary tiebreakers.
 - `referralCount` (Number): Number of successful referrals.
 - `badges` (Array of subdocuments, Required): List of earned weekly rank badges. Each subdocument contains:
-  * `badgeType` (String, Enum: `'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10'`)
+  * `badgeType` (String, Enum: `'FIRST_PLACE' | 'SECOND_PLACE' | 'THIRD_PLACE' | 'TOP_5' | 'TOP_10' | 'GOAT'`)
   * `earnedAt` (Date)
   * `weekId` (Number)
 - `isSubscribed` (Boolean, Default: false): Phase 2 backward compatibility.
@@ -96,7 +96,7 @@ Coordinates active game sessions to enable anti-cheat validation. Configured wit
 Calculates time boundaries strictly in UTC:
 
 - `getDayId()` parses a date object and outputs `YYYY-MM-DD`.
-- `getWeekId()` computes the 1-indexed week count elapsed since the configurable `GENESIS_DATE` (e.g. `2026-05-25T00:00:00Z` representing a Monday), aligning weeks with standard Monday-to-Sunday cycles.
+- `getWeekId()` computes the 1-indexed week count elapsed since the fixed `GENESIS_DATE` (`2026-05-25T00:00:00Z` representing a Monday), aligning weeks with standard Monday-to-Sunday cycles.
 
 ### 3.3 Anti-Cheat Pipeline
 
@@ -104,18 +104,23 @@ Calculates time boundaries strictly in UTC:
 2.  **Submit Request**: The client requests `/api/scores/validate-score`.
 3.  **Replay Protection**: The server looks up the attempt. If `isSubmitted` is already true, it immediately rejects the request.
 4.  **Duration Verification**: The server calculates the elapsed time: `elapsed = (now - startTime) / 1000`. It enforces a strict rate limit: `score / elapsed <= 50` points per second.
-5.  **Score Logging**: The score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases, a life is consumed and the hourly limit counter increments. If the remaining lives drop to 0, the hourly play limit reset window (`firstGameInHour`) and lives refill countdown (`nextRefillAt`) begin immediately.
+5.  **Score Logging**: If the score is greater than 0, the score is saved in MongoDB. If valid, the score is added to the user's accumulated session scores; if invalid, it is flagged as `isValid = false` and excluded from leaderboards. In both cases (valid/invalid), a life is consumed and the hourly limit counter increments. If the remaining lives drop to 0, the hourly play limit reset window (`firstGameInHour`) and lives refill countdown (`nextRefillAt`) begin immediately.
+6.  **Zero-Score Exception**: If the score is 0, the session is completed but no life is consumed, the hourly limit counter is not incremented, and no Score document is saved to the database.
 
 ### 3.4 Weekly Leaderboard Resolution & Badge Awarding Engine (src/services/badgeManager.ts)
 
-At the end of each week (Saturday 23:59:59 UTC), a weekly resolution script executes (or is manually triggered via API) to assign rank badges to the top 10 standings.
+At the end of each week (Saturday 23:59:59 UTC), a weekly resolution script executes (or is manually triggered via API) to assign rank badges to the top 10 standings and update the transferable G.O.A.T. badge.
 - **Ranks and Badges**:
+  - **G.O.A.T. Badge** (`GOAT`): Awarded dynamically to the player with the most accumulated Weekly Champion (`FIRST_PLACE`) badges overall. The badge is unique (only one player holds it at any time) and transferable.
   - Rank 1: `FIRST_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Rank 2: `SECOND_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Rank 3: `THIRD_PLACE` (repeatable), `TOP_5` (one-time), `TOP_10` (one-time).
   - Ranks 4-5: `TOP_5` (one-time), `TOP_10` (one-time).
   - Ranks 6-10: `TOP_10` (one-time).
-- **Constraints**: Place badges can be earned multiple times (new badge object appended to the player's array). Tier badges (`TOP_5` and `TOP_10`) can only be earned once.
+- **Constraints & Transfer Logic**:
+  - Place badges (`FIRST_PLACE`, `SECOND_PLACE`, `THIRD_PLACE`) can be earned multiple times (appended to the player's badges array).
+  - Tier badges (`TOP_5`, `TOP_10`) can only be earned once.
+  - G.O.A.T. badge is automatically pulled (`$pull` from badges array) from the previous holder and pushed (`$push`) to the new leader if they are overtaken in championship count. Ties are broken in favor of the existing holder, or using the highest single valid score.
 
 ---
 
@@ -166,7 +171,7 @@ Pre-checks session constraints. Generates and returns a UUID `gameSessionId` for
 
 #### `POST /api/scores/validate-score`
 
-Validates duration rate, consumes a life, updates stats, and saves the score.
+Validates duration rate, consumes a life (if score > 0), updates stats (if score > 0), and saves the score (if score > 0). If the score is 0, no life is consumed and the game attempt does not count.
 
 - **Headers**: `Authorization: Bearer <JWT>`
 - **Payload**: `{ gameSessionId: string, score: number }`
@@ -261,7 +266,6 @@ The infrastructure configuration uses Serverless Framework:
 - **Environment Variables**: Dynamically sources application variables:
   * `MONGODB_URI`
   * `JWT_SECRET`
-  * `GENESIS_DATE`
 
 ### 7.5 Deployment Commands
 Before deploying, ensure you are authenticated to your AWS account (via `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) and that these keys are set in your environment along with application variables.

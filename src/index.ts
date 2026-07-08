@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import serverless from 'serverless-http';
 import playerRoutes from './routes/playerRoutes.js';
 import scoreRoutes from './routes/scoreRoutes.js';
-import { getWeekId } from './utils/timeUtils.js';
+import { getWeekId, getAlignedGenesisTime } from './utils/timeUtils.js';
 import { BadgeManager } from './services/badgeManager.js';
 
 dotenv.config();
@@ -28,18 +28,19 @@ app.get('/health', (req, res) => {
 
 function scheduleNextResolution() {
   const now = new Date();
-  const nextMonday = new Date();
-  nextMonday.setUTCHours(0, 0, 0, 0);
-  const day = nextMonday.getUTCDay();
-  const daysToAdd = (8 - day) % 7 || 7;
-  nextMonday.setUTCDate(nextMonday.getUTCDate() + daysToAdd);
+  const alignedGenesisTime = getAlignedGenesisTime();
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  
+  const elapsedMs = now.getTime() - alignedGenesisTime;
+  const currentWeek = elapsedMs < 0 ? 1 : Math.floor(elapsedMs / ONE_WEEK_MS) + 1;
+  const nextResolutionTime = new Date(alignedGenesisTime + currentWeek * ONE_WEEK_MS);
 
-  let msToNextMonday = nextMonday.getTime() - now.getTime();
-  if (msToNextMonday <= 0) {
-    msToNextMonday += 7 * 24 * 60 * 60 * 1000;
+  let msToNextResolution = nextResolutionTime.getTime() - now.getTime();
+  if (msToNextResolution <= 0) {
+    msToNextResolution += ONE_WEEK_MS;
   }
   
-  console.log(`Local resolution scheduled for next Monday ${nextMonday.toISOString()} (in ${Math.round(msToNextMonday / 1000 / 60)} minutes)`);
+  console.log(`Local resolution scheduled for next week boundary ${nextResolutionTime.toISOString()} (in ${Math.round(msToNextResolution / 1000 / 60)} minutes)`);
   
   setTimeout(async () => {
     try {
@@ -51,7 +52,7 @@ function scheduleNextResolution() {
       console.error(`[Local Scheduler] Error resolving week:`, error);
     }
     scheduleNextResolution();
-  }, msToNextMonday);
+  }, msToNextResolution);
 }
 
 // Database and Server startup for local development
